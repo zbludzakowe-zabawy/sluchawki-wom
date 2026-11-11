@@ -40,6 +40,8 @@ Aplikacja do nauki rozpoznawania utworów ze słuchu. Działa w przeglądarce i 
   2. Na GitHubie, w repozytorium (gałąź `main`): *Add file → Upload files*, wpisz folder `zbiory/` (np. przeciągnij plik i zmień nazwę na `zbiory/kanon-2.1.json`), *Commit changes*.
   3. Po publikacji (około minuty) zbiór pojawi się w bibliotece. Jeśli później podmienisz plik, użytkownicy zobaczą przy nim **↻ Aktualizuj**.
 - Spis biblioteki (`zbiory/index.json`) tworzy się sam przy publikacji (`tools/build-library.mjs`).
+- Zbiorów z biblioteki **nie można edytować** (🔒), żeby wszyscy uczyli się z tej samej wersji. Przycisk **⧉ Własna kopia** tworzy zwykły zbiór „… (moja kopia)”, który można dowolnie zmieniać. Zbiór z biblioteki zmienia się tylko przez **↻ Aktualizuj**, po zmianie pliku w repozytorium.
+- Wbudowane zbiory: `zbiory/kanon-klasa-5-nr-1.json` – *Kanon klasa 5 nr 1* (15 utworów).
 
 ## Klucz Google API (jednorazowo)
 

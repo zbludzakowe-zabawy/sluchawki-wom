@@ -326,3 +326,5 @@ body.has-mini .app-banner { bottom: calc(84px + env(safe-area-inset-bottom)); }
 .lib-card .set-main { flex: 1; }
 .lib-card .btn { flex: none; min-height: 40px; }
 .lib-card .badge-ok { color: var(--good); font-weight: 600; font-size: .9rem; flex: none; }
+
+.lock-box p { margin: 0 0 6px; color: var(--muted); }

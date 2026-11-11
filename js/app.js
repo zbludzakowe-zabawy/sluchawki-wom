@@ -190,12 +190,13 @@ async function setView(id) {
   const size = set.tracks.reduce((s, t) => s + (t.size || 0), 0);
   const authors = groupAuthors(set.tracks);
   const results = (await db.resultsFor(id).catch(() => [])).sort((a, b) => b.date - a.date).slice(0, 5);
+  const locked = !!set.lib;
   render(`
     <div class="title-row">
-      <div><h1 class="page-title">${esc(set.name)}</h1><p class="muted">${utwory(n)}${set.lib ? ' · z biblioteki' : ''}</p></div>
-      <a class="btn" href="#/edytuj/${esc(id)}">✎ Edytuj</a>
+      <div><h1 class="page-title">${esc(set.name)}</h1><p class="muted">${utwory(n)}${locked ? ' · 🔒 z biblioteki' : ''}</p></div>
+      ${locked ? '<button class="btn" data-copy>⧉ Własna kopia</button>' : `<a class="btn" href="#/edytuj/${esc(id)}">✎ Edytuj</a>`}
     </div>
-    ${!n ? `<div class="empty card">Ten zbiór jest pusty. <a href="#/dodaj/${esc(id)}">Dodaj utwory</a>.</div>` : ''}
+    ${!n && !locked ? `<div class="empty card">Ten zbiór jest pusty. <a href="#/dodaj/${esc(id)}">Dodaj utwory</a>.</div>` : ''}
     <h2 class="sec-title">Słuchanie</h2>
     <div class="grid2">
       <button class="btn big" data-play="order">▶ Po kolei</button>
@@ -230,17 +231,20 @@ async function setView(id) {
     </div>
     ${n ? `<details class="card tracks-box"><summary>Utwory w zbiorze (${n})</summary><ol class="track-list">${set.tracks.map((t) =>
       `<li>${esc(trackLabel(t))}${downloaded.has(t.fileId) ? ' <span class="dl" title="pobrany">⇩</span>' : ''}</li>`).join('')}</ol>
-      <a class="btn wide" href="#/edytuj/${esc(id)}">✎ Edytuj utwory i kolejność</a></details>` : ''}
+      ${locked ? '' : `<a class="btn wide" href="#/edytuj/${esc(id)}">✎ Edytuj utwory i kolejność</a>`}</details>` : ''}
     <h2 class="sec-title">Eksport i udostępnianie</h2>
     <div class="grid2">
       <button class="btn" id="export">⇪ Eksportuj do pliku<small>do importu na innym urządzeniu</small></button>
       <button class="btn" id="share">↗ Udostępnij link<small>import jednym stuknięciem</small></button>
     </div>
     <h2 class="sec-title">Zarządzanie</h2>
-    <div class="grid2">
+    ${locked ? `<div class="card lock-box"><p>🔒 To zbiór z biblioteki – nie można go edytować, żeby wszyscy uczyli się z tej samej wersji.
+      Chcesz coś zmienić? Utwórz własną kopię: będzie Twoja i dowolnie ją zmienisz.</p>
+      <button class="btn primary wide" data-copy>⧉ Utwórz własną kopię do edycji</button></div>`
+    : `<div class="grid2">
       <a class="btn" href="#/dodaj/${esc(id)}">＋ Dodaj utwory</a>
       <a class="btn" href="#/edytuj/${esc(id)}">✎ Edytuj zbiór</a>
-    </div>
+    </div>`}
     <button class="btn danger wide" id="del-set">Usuń zbiór</button>
   `);
   $$('[data-play]').forEach((b) => b.addEventListener('click', () => startPlayer(set, b.dataset.play)));
@@ -255,6 +259,7 @@ async function setView(id) {
   $$('[data-quiz]').forEach((b) => b.addEventListener('click', () => startQuiz(set, b.dataset.quiz)));
   $('#share').addEventListener('click', () => shareSet(set));
   $('#export').addEventListener('click', () => exportSet(set));
+  $$('[data-copy]').forEach((b) => b.addEventListener('click', () => makeCopy(set)));
   $('#del-set').addEventListener('click', async () => {
     if (!confirm(`Usunąć zbiór „${set.name}”? Pliki na Dysku Google zostaną nietknięte.`)) return;
     await db.deleteSet(id);
@@ -273,6 +278,20 @@ async function setView(id) {
     toast('Usunięto pobrane nagrania.');
     setView(id);
   });
+}
+
+/** własna (edytowalna) kopia zbioru z biblioteki */
+async function makeCopy(set) {
+  const taken = new Set((await db.listSets()).map((x) => x.name));
+  let name = `${set.name} (moja kopia)`;
+  for (let i = 2; taken.has(name); i++) name = `${set.name} (moja kopia ${i})`;
+  const copy = {
+    id: uid(), name, createdAt: Date.now(), folders: set.folders.slice(), files: set.files.slice(),
+    tracks: set.tracks.map((t) => ({ ...t, id: uid() })),
+  };
+  await db.putSet(copy);
+  toast(`Utworzono „${name}” – możesz ją teraz edytować.`, 'good');
+  location.hash = `#/edytuj/${copy.id}`;
 }
 
 function groupAuthors(tracks) {
@@ -854,7 +873,8 @@ let draftTimer = null;
 const saveDraftSoon = () => { clearTimeout(draftTimer); draftTimer = setTimeout(saveDraft, 400); };
 
 async function addView(setId) {
-  const sets = (await db.listSets()).sort((a, b) => a.name.localeCompare(b.name, 'pl'));
+  // do zbiorów z biblioteki nie można dopisywać utworów
+  const sets = (await db.listSets()).filter((x) => !x.lib).sort((a, b) => a.name.localeCompare(b.name, 'pl'));
   draft = ls.get(K.draft, null) || { target: 'new', setId: '', name: '', text: '', rows: [], folderLink: '', folders: [], files: [] };
   if (setId && sets.some((s) => s.id === setId)) { draft.target = 'existing'; draft.setId = setId; }
   if (draft.target === 'existing' && !sets.some((s) => s.id === draft.setId)) { draft.target = 'new'; draft.setId = ''; }
@@ -1061,6 +1081,10 @@ async function addView(setId) {
 async function editView(id) {
   const set = await db.getSet(id);
   if (!set) return go('#/');
+  if (set.lib) {
+    toast('Zbioru z biblioteki nie można edytować – utwórz własną kopię.', 'error');
+    return location.replace(`#/zbior/${id}`);
+  }
   setHeader('Edycja zbioru', `#/zbior/${id}`);
   const model = {
     rows: set.tracks.map((t) => ({ key: t.id, id: t.id, author: t.author, title: t.title, part: t.part, fileId: t.fileId, score: 1, manual: true })),
@@ -1260,7 +1284,8 @@ async function exportAll() {
 /** zapisuje zbiór z importu (zastępuje albo dodaje jako nowy) */
 async function saveImported(s, { lib = null, ask = true } = {}) {
   const sets = await db.listSets();
-  const same = (s.id && sets.find((x) => x.id === s.id)) || (lib && sets.find((x) => x.lib && x.lib.file === lib.file)) || sets.find((x) => x.name === s.name);
+  let same = (s.id && sets.find((x) => x.id === s.id)) || (lib && sets.find((x) => x.lib && x.lib.file === lib.file)) || sets.find((x) => x.name === s.name);
+  if (same && same.lib && !lib) same = null; // zbiór z biblioteki zmienia tylko aktualizacja z biblioteki
   const files = s.tracks.map((t) => ({ id: t.fileId, name: t.fileName, size: t.size, mimeType: t.mimeType, resourceKey: t.resourceKey }));
   let set = null;
   if (same) {
