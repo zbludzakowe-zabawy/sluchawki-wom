@@ -292,12 +292,27 @@ export function checkAuthor(answer, correct) {
   return given.every((t) => wordSim(t, sur) >= 0.8 || others.some((o) => wordSim(t, o) >= 0.8 || (t.length === 1 && o[0] === t) || (o.length === 1 && t[0] === o)));
 }
 
+const GENRE = new Set(['opera', 'balet', 'operetka', 'musical', 'piesn', 'oratorium', 'kantata']);
+const noGenre = (ts) => ts.filter((t) => !GENRE.has(t));
+
+/** warianty tytułu: pełny, bez dopisku w nawiasie/cudzysłowie, sam dopisek */
+function titleVariants(title) {
+  const t = String(title || '').replace(/[“”„"]|''/g, '"');
+  const out = new Set([t]);
+  for (const re of [/\(([^)]*)\)/g, /"([^"]*)"/g]) {
+    const inner = [...t.matchAll(re)].map((m) => m[1]);
+    if (!inner.length) continue;
+    out.add(t.replace(re, ' '));
+    for (const x of inner) out.add(x);
+  }
+  return [...out].map((v) => noGenre(tokens(v))).filter((v) => v.length);
+}
+
 export function checkTitle(answer, correct) {
-  const a = tokens(answer);
-  const c = tokens(correct);
-  if (!c.length) return !a.length;
-  if (numsOf(a) !== numsOf(c)) return false;
-  return seqSim(a, c) >= 0.8;
+  const a = noGenre(tokens(answer));
+  if (!tokens(correct).length) return !a.length;
+  if (!a.length) return false;
+  return titleVariants(correct).some((c) => numsOf(a) === numsOf(c) && seqSim(a, c) >= 0.8);
 }
 
 export function checkPart(answer, correct) {
@@ -305,10 +320,13 @@ export function checkPart(answer, correct) {
   const c = tokens(correct, { roman: true });
   if (!c.length) return !a.length; // nie ma części – pole ma zostać puste
   if (!a.length) return false;
-  if (numsOf(a) !== numsOf(c)) return false;
-  // sama liczba wystarczy („I” = „cz. 1”), inaczej słowa muszą być podobne
-  if (a.every(isNum) || c.every(isNum)) return numsOf(a) !== '' ;
-  return seqSim(a, c) >= 0.7;
+  const aw = a.filter((t) => !isNum(t));
+  const cw = c.filter((t) => !isNum(t));
+  // podane liczby muszą się zgadzać („I” = „cz. 1”); same słowa („Pastorale”) też wystarczą
+  if (a.some(isNum) && numsOf(a) !== numsOf(c)) return false;
+  if (!aw.length) return a.some(isNum);
+  if (!cw.length) return false;
+  return seqSim(aw, cw) >= 0.7;
 }
 
 export function checkAnswer(ans, track) {

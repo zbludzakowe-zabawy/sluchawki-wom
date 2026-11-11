@@ -1,4 +1,6 @@
 // Słuchawki – odczyt tekstu z obrazu (Tesseract.js) i z PDF (pdf.js). Biblioteki ładowane dopiero przy użyciu.
+import { layoutText } from './layout.js';
+
 const TESSERACT = 'https://cdn.jsdelivr.net/npm/tesseract.js@5.1.1/dist/tesseract.min.js';
 const PDFJS = 'https://cdn.jsdelivr.net/npm/pdfjs-dist@3.11.174/build/pdf.min.js';
 const PDFJS_WORKER = 'https://cdn.jsdelivr.net/npm/pdfjs-dist@3.11.174/build/pdf.worker.min.js';
@@ -112,6 +114,51 @@ async function prepare(source) {
       }
     }
   }
+  // kod QR i inne gęste plamy: komórki siatki z dużą ilością czerni, połączone w większe skupiska
+  const cs = Math.max(12, Math.round(Math.max(W, H) / 70));
+  const gw = Math.ceil(W / cs);
+  const gh = Math.ceil(H / cs);
+  const dense = new Uint8Array(gw * gh);
+  for (let gy = 0; gy < gh; gy++) {
+    for (let gx = 0; gx < gw; gx++) {
+      let n = 0;
+      let tot = 0;
+      for (let y = gy * cs; y < Math.min(H, (gy + 1) * cs); y++) {
+        for (let x = gx * cs; x < Math.min(W, (gx + 1) * cs); x++) { tot++; n += dark[y * W + x] && !erase[y * W + x] ? 1 : 0; }
+      }
+      dense[gy * gw + gx] = tot && n / tot > 0.42 ? 1 : 0;
+    }
+  }
+  const seen = new Uint8Array(gw * gh);
+  for (let i = 0; i < gw * gh; i++) {
+    if (!dense[i] || seen[i]) continue;
+    const stack = [i];
+    const comp = [];
+    seen[i] = 1;
+    while (stack.length) {
+      const k = stack.pop();
+      comp.push(k);
+      const kx = k % gw;
+      const ky = (k - kx) / gw;
+      for (let dy = -1; dy <= 1; dy++) for (let dx = -1; dx <= 1; dx++) {
+        const nx = kx + dx;
+        const ny = ky + dy;
+        if (nx < 0 || ny < 0 || nx >= gw || ny >= gh) continue;
+        const j = ny * gw + nx;
+        if (dense[j] && !seen[j]) { seen[j] = 1; stack.push(j); }
+      }
+    }
+    if (comp.length < 12) continue;
+    let x0 = gw; let x1 = 0; let y0 = gh; let y1 = 0;
+    for (const k of comp) { const kx = k % gw; const ky = (k - kx) / gw; x0 = Math.min(x0, kx); x1 = Math.max(x1, kx); y0 = Math.min(y0, ky); y1 = Math.max(y1, ky); }
+    // skupisko musi być zwarte (kwadratowe), a nie długim pogrubionym napisem
+    const bw = x1 - x0 + 1;
+    const bh = y1 - y0 + 1;
+    if (bh < 4 || bw < 4 || bw / bh > 2 || bh / bw > 2 || comp.length < bw * bh * 0.4) continue;
+    for (let y = Math.max(0, (y0 - 1) * cs); y < Math.min(H, (y1 + 2) * cs); y++) {
+      for (let x = Math.max(0, (x0 - 1) * cs); x < Math.min(W, (x1 + 2) * cs); x++) erase[y * W + x] = 1;
+    }
+  }
   for (let i = 0; i < W * H; i++) {
     const v = dark[i] && !erase[i] ? 0 : 255;
     p[i * 4] = p[i * 4 + 1] = p[i * 4 + 2] = v;
@@ -128,8 +175,20 @@ async function ocrCanvas(canvas, onStatus, label) {
     else if (/load|initializ/i.test(m.status)) onStatus('Przygotowanie rozpoznawania tekstu (za pierwszym razem chwilę to trwa)…');
   };
   const w = await worker();
-  const { data } = await Promise.race([w.recognize(canvas), ocrFailure()]);
-  return data.text;
+  const { data } = await Promise.race([w.recognize(canvas, {}, { text: true, blocks: true }), ocrFailure()]);
+  const words = [];
+  for (const b of data.blocks || []) for (const p of b.paragraphs || []) for (const l of p.lines || []) for (const wd of l.words || []) {
+    words.push({ text: wd.text, conf: Math.round(wd.confidence), x0: wd.bbox.x0, y0: wd.bbox.y0, x1: wd.bbox.x1, y1: wd.bbox.y1 });
+  }
+  return { text: data.text, words, width: canvas.width, height: canvas.height };
+}
+
+/** do testów: słowa z położeniem */
+export async function ocrImageWords(file) {
+  const c = await prepare(file);
+  const r = await ocrCanvas(c, null, '');
+  r.image = c.toDataURL('image/png');
+  return r;
 }
 
 async function pdfText(file, onStatus) {
@@ -168,7 +227,7 @@ async function pdfText(file, onStatus) {
     c.width = vp.width;
     c.height = vp.height;
     await page.render({ canvasContext: c.getContext('2d'), viewport: vp }).promise;
-    parts.push(await ocrCanvas(await prepare(c), onStatus, `Strona ${n}/${doc.numPages}: `));
+    parts.push(layoutText(await ocrCanvas(await prepare(c), onStatus, `Strona ${n}/${doc.numPages}: `)));
   }
   return parts.join('\n');
 }
@@ -189,5 +248,5 @@ export async function readFileText(file, onStatus = () => {}) {
   try { canvas = await prepare(file); } catch {
     throw new Error('Nie udało się otworzyć obrazu. Jeśli to zdjęcie HEIC z iPhone’a, zapisz je jako JPG.');
   }
-  return ocrCanvas(canvas, onStatus, '');
+  return layoutText(await ocrCanvas(canvas, onStatus, ''));
 }

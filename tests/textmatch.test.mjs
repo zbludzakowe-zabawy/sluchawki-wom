@@ -99,7 +99,20 @@ test('quiz tekstowy – sprawdzanie odpowiedzi', () => {
   assert.equal(checkPart('I', 'cz. 1'), true);
   assert.equal(checkPart('cz. 2', 'cz. I'), false);
   assert.equal(checkPart('', 'cz. I'), false);
-  assert.equal(checkPart('allegro', 'cz. I Allegro'), false); // brak numeru części
+  assert.equal(checkPart('allegro', 'cz. I Allegro'), true); // sama nazwa części wystarczy
+  assert.equal(checkPart('cz. 2 allegro', 'cz. I Allegro'), false);
+  assert.equal(checkPart('Pastorale', 'cz. 5. Pastorale'), true);
+  assert.equal(checkPart('Preludium C-dur', 'tom 1 - Preludium C-dur'), true);
+  assert.equal(checkPart('Menuet', 'cz. 3. Gawot'), false);
+  assert.equal(checkTitle('Halka', 'opera Halka'), true);
+  assert.equal(checkTitle('opera Halka', 'opera Halka'), true);
+  assert.equal(checkTitle('Król elfów', 'Erlkönig (Król elfów)'), true);
+  assert.equal(checkTitle('erlkonig', 'Erlkönig (Król elfów)'), true);
+  assert.equal(checkTitle('Eine kleine Nachtmusik', 'Serenada G-dur KV525 „Eine Kleine Nachtmusik”'), true);
+  assert.equal(checkTitle('Serenada G-dur KV 525', 'Serenada G-dur KV525 „Eine Kleine Nachtmusik”'), true);
+  assert.equal(checkTitle('Concerto grosso g-moll op. 6 nr 8', 'Concerto Grosso g-moll „Na Boże Narodzenie” op. 6 nr 8'), true);
+  assert.equal(checkTitle('Mazurek a-moll op. 68 nr 2', 'Polonez A-dur op. 40 nr 1'), false);
+  assert.equal(checkTitle('Symfonia', 'Symfonia fantastyczna'), false);
   assert.equal(checkPart('1 allegro', 'cz. I Allegro'), true);
   assert.equal(checkPart('Mazur', 'Mazur'), true);
 });
