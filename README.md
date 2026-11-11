@@ -16,16 +16,30 @@ Aplikacja do nauki rozpoznawania utworów ze słuchu. Działa w przeglądarce i 
 - Słuchanie po kolei, w kolejności ustalonej przy dodawaniu.
 - Słuchanie losowe. Kolejność jest za każdym razem inna niż ostatnio.
 - Słuchanie utworów wybranego autora.
-- Quiz wyboru: aplikacja puszcza początek utworu, a ty wybierasz go z listy wszystkich utworów zbioru (lista ma wyszukiwarkę).
+- Quiz wyboru: aplikacja puszcza utwór od początku, a ty wybierasz go z listy wszystkich utworów zbioru (lista ma wyszukiwarkę). Utwór gra do końca: możesz go zatrzymać ⏸, przewinąć albo puścić „↺ Od początku”.
 - Quiz tekstowy: wpisujesz autora, tytuł i część. Aplikacja nie podpowiada, czy utwór ma część. Wielkość liter, polskie znaki i drobne literówki nie mają znaczenia. Wystarczy samo nazwisko autora (imiona albo inicjały są opcjonalne). W tytule można pominąć słowa typu „opera”, „balet” oraz dopisek w nawiasie lub cudzysłowie, np. „Halka”, „Król elfów”, „Eine kleine Nachtmusik”. W części wystarczy numer albo nazwa, np. „5” albo „Pastorale”.
 - Podsumowanie quizu pokazuje utwory rozpoznane i do powtórki, z twoimi odpowiedziami. Przycisk „Powtórz błędne” powtarza tylko źle rozpoznane. Za wynik ≥ 90% jest confetti 🎉.
-- W ustawieniach quizu wybierasz liczbę pytań (wszystkie, 10, 20 albo 30) i długość fragmentu (5–45 s).
+- W ustawieniach quizu wybierasz liczbę pytań (wszystkie, 10, 20 albo 30) i to, co ma grać: cały utwór (domyślnie) albo tylko pierwsze 15, 30 lub 60 s.
 
 **Bez internetu**
 - Przycisk „Pobierz na urządzenie” zapisuje nagrania zbioru w pamięci aplikacji (IndexedDB). Potem słuchanie i quizy działają w samolocie albo w metrze.
 
-**Przenoszenie zbiorów**
-- Zbiory są zapisane na urządzeniu. „Udostępnij link” wysyła cały zbiór w linku, na przykład koleżankom z klasy. Jest też „Zapisz do pliku” i „Importuj z pliku”.
+**Edycja zbioru po zapisaniu**
+- W zbiorze przycisk **✎ Edytuj** (u góry). Możesz zmienić nazwę, poprawić autora, tytuł i część, zmienić plik nagrania, kolejność albo usunąć utwór. Możesz też wczytać inny folder z Dysku i dodać z niego nowe nagrania. Lista utworów jest widoczna w zbiorze pod „Utwory w zbiorze”.
+
+**Eksport i import**
+- Zbiory są zapisane na urządzeniu.
+- **Eksportuj do pliku** (w zbiorze) zapisuje jeden zbiór, a **Eksportuj wszystkie zbiory** (strona główna) zapisuje wszystkie w jednym pliku `.sluchawki.json`.
+- Na drugim urządzeniu: **Importuj z pliku** na stronie głównej. Ponowny import tego samego zbioru zastępuje go, zamiast tworzyć duplikat.
+- **Udostępnij link** wysyła cały zbiór w linku, który otwiera się w aplikacji i zapisuje jednym stuknięciem.
+
+**Biblioteka zbiorów (dla wszystkich użytkowników)**
+- Zbiory wrzucone do folderu `zbiory/` w repozytorium widzi każdy na stronie głównej, w sekcji „Biblioteka zbiorów”. Wystarczy stuknąć **＋ Dodaj**.
+- Jak opublikować zbiór:
+  1. W aplikacji, w zbiorze: **⇪ Eksportuj do pliku**.
+  2. Na GitHubie, w repozytorium (gałąź `main`): *Add file → Upload files*, wpisz folder `zbiory/` (np. przeciągnij plik i zmień nazwę na `zbiory/kanon-2.1.json`), *Commit changes*.
+  3. Po publikacji (około minuty) zbiór pojawi się w bibliotece. Jeśli później podmienisz plik, użytkownicy zobaczą przy nim **↻ Aktualizuj**.
+- Spis biblioteki (`zbiory/index.json`) tworzy się sam przy publikacji (`tools/build-library.mjs`).
 
 ## Klucz Google API (jednorazowo)
 
@@ -63,6 +77,7 @@ Aplikacja uruchamia się bez internetu. Zbiory, wyniki, rozpoczęty quiz i szkic
 | `js/confetti.js` | nagroda 🎉 |
 | `js/config.js` | wspólny klucz Google API |
 | `js/pwa.js`, `sw.js`, `manifest.webmanifest`, `icons/` | instalacja, offline, aktualizacje |
-| `tools/` | `build-sw.mjs` (wersja service workera przy publikacji), `make-icons.cjs` (ikony z `icons/icon.svg`) |
+| `tools/` | `build-sw.mjs` (wersja service workera przy publikacji), `build-library.mjs` (spis biblioteki zbiorów), `make-icons.cjs` (ikony z `icons/icon.svg`) |
+| `zbiory/` | biblioteka zbiorów widoczna dla wszystkich (pliki wyeksportowane z aplikacji) |
 | `tests/` | testy (`npm test`), m.in. na prawdziwej liście z `przyklady/` |
 | `przyklady/` | przykładowe listy utworów (wzór dla odczytu) |

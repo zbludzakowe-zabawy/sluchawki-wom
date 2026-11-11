@@ -25,7 +25,7 @@ const ls = {
   del(k) { try { localStorage.removeItem(k); } catch { /* trudno */ } },
 };
 const K = { prefs: 'sluchawki-prefs', player: 'sluchawki-player', quiz: 'sluchawki-quiz', draft: 'sluchawki-draft', result: 'sluchawki-last-result' };
-const prefs = Object.assign({ fragment: 15, count: 'all' }, ls.get(K.prefs, {}));
+const prefs = Object.assign({ fragment: 0, count: 'all' }, ls.get(K.prefs, {})); // fragment 0 = cały utwór
 const savePrefs = () => ls.set(K.prefs, prefs);
 
 function toast(msg, kind = '') {
@@ -144,19 +144,39 @@ async function home() {
       <p>Kanony na WOM – ucz się rozpoznawać utwory ze słuchu.</p>
     </section>
     <h2 class="sec-title">Nauka – wybierz zbiór</h2>
-    ${sets.length ? `<div class="list">${cards}</div>` : `<div class="empty card">Nie masz jeszcze żadnego zbioru utworów.<br>Dodaj pierwszy albo zaimportuj zbiór od kogoś.</div>`}
-    <h2 class="sec-title">Dodawanie</h2>
+    ${sets.length ? `<div class="list">${cards}</div>` : `<div class="empty card">Nie masz jeszcze żadnego zbioru utworów.<br>Dodaj go z biblioteki, zaimportuj z pliku albo utwórz własny.</div>`}
+    <div id="library"></div>
+    <h2 class="sec-title">Dodawanie, import i eksport</h2>
     <div class="grid2">
       <a class="btn big" href="#/dodaj">＋ Nowy zbiór</a>
-      <label class="btn big">⇩ Importuj z pliku<input type="file" id="imp-file" accept=".json,application/json" hidden></label>
+      <label class="btn big">⇩ Importuj z pliku<small>plik .sluchawki.json</small><input type="file" id="imp-file" accept=".json,application/json" multiple hidden></label>
     </div>
+    ${sets.length ? '<button class="btn wide" id="exp-all">⇪ Eksportuj wszystkie zbiory do pliku</button>' : ''}
     ${!drive.hasApiKey() ? `<p class="hint">Do słuchania z Dysku Google potrzebny jest klucz API – <a href="#/ustawienia">ustaw go w Ustawieniach</a>.</p>` : ''}
   `);
   $('#imp-file').addEventListener('change', async (e) => {
-    const f = e.target.files[0];
-    if (!f) return;
-    try { importData(JSON.parse(await f.text())); } catch { toast('To nie jest plik zbioru Słuchawek.', 'error'); }
+    const files = [...e.target.files];
+    e.target.value = '';
+    await importFiles(files);
   });
+  const ea = $('#exp-all');
+  if (ea) ea.addEventListener('click', exportAll);
+  renderLibrary(sets);
+}
+
+async function renderLibrary(sets) {
+  const box = $('#library');
+  const lib = await loadLibrary();
+  if (!box || !box.isConnected || !lib.length) return;
+  box.innerHTML = `<h2 class="sec-title">Biblioteka zbiorów</h2>
+    <div class="list">${lib.map((e, i) => {
+      const mine = sets.find((x) => x.lib && x.lib.file === e.file);
+      const state = !mine ? `<button class="btn primary" data-lib="${i}">＋ Dodaj</button>`
+        : mine.lib.hash !== e.hash ? `<button class="btn" data-lib="${i}">↻ Aktualizuj</button>` : '<span class="badge-ok">✓ masz</span>';
+      return `<div class="card lib-card"><span class="set-ico" aria-hidden="true">♫</span>
+        <span class="set-main"><strong>${esc(e.name)}</strong><small>${utwory(e.count || 0)}</small></span>${state}</div>`;
+    }).join('')}</div>`;
+  $$('[data-lib]', box).forEach((b) => b.addEventListener('click', () => { b.disabled = true; importFromLibrary(lib[Number(b.dataset.lib)]); }));
 }
 
 // ---------- widok zbioru ----------
@@ -171,8 +191,10 @@ async function setView(id) {
   const authors = groupAuthors(set.tracks);
   const results = (await db.resultsFor(id).catch(() => [])).sort((a, b) => b.date - a.date).slice(0, 5);
   render(`
-    <h1 class="page-title">${esc(set.name)}</h1>
-    <p class="muted">${utwory(n)}</p>
+    <div class="title-row">
+      <div><h1 class="page-title">${esc(set.name)}</h1><p class="muted">${utwory(n)}${set.lib ? ' · z biblioteki' : ''}</p></div>
+      <a class="btn" href="#/edytuj/${esc(id)}">✎ Edytuj</a>
+    </div>
     ${!n ? `<div class="empty card">Ten zbiór jest pusty. <a href="#/dodaj/${esc(id)}">Dodaj utwory</a>.</div>` : ''}
     <h2 class="sec-title">Słuchanie</h2>
     <div class="grid2">
@@ -193,8 +215,8 @@ async function setView(id) {
       <label>Pytań: <select id="q-count">
         ${['all', '10', '20', '30'].map((v) => `<option value="${v}" ${prefs.count === v ? 'selected' : ''}>${v === 'all' ? `wszystkie (${n})` : v}</option>`).join('')}
       </select></label>
-      <label>Fragment: <select id="q-frag">
-        ${[5, 10, 15, 20, 30, 45].map((v) => `<option value="${v}" ${prefs.fragment === v ? 'selected' : ''}>${v} s</option>`).join('')}
+      <label>Odtwarzaj: <select id="q-frag">
+        ${[0, 15, 30, 60].map((v) => `<option value="${v}" ${prefs.fragment === v ? 'selected' : ''}>${v ? `pierwsze ${v} s` : 'cały utwór'}</option>`).join('')}
       </select></label>
     </div>
     ${results.length ? `<h2 class="sec-title">Ostatnie wyniki</h2><ul class="results">${results.map((r) =>
@@ -206,12 +228,18 @@ async function setView(id) {
            <button class="btn primary" id="off-get">⇩ Pobierz na urządzenie</button> ${have ? '<button class="btn" id="off-del">Usuń pobrane</button>' : ''}`}
       <div id="off-progress" hidden><div class="bar"><i></i></div><p class="muted" id="off-status"></p><button class="btn" id="off-cancel">Przerwij</button></div>
     </div>
+    ${n ? `<details class="card tracks-box"><summary>Utwory w zbiorze (${n})</summary><ol class="track-list">${set.tracks.map((t) =>
+      `<li>${esc(trackLabel(t))}${downloaded.has(t.fileId) ? ' <span class="dl" title="pobrany">⇩</span>' : ''}</li>`).join('')}</ol>
+      <a class="btn wide" href="#/edytuj/${esc(id)}">✎ Edytuj utwory i kolejność</a></details>` : ''}
+    <h2 class="sec-title">Eksport i udostępnianie</h2>
+    <div class="grid2">
+      <button class="btn" id="export">⇪ Eksportuj do pliku<small>do importu na innym urządzeniu</small></button>
+      <button class="btn" id="share">↗ Udostępnij link<small>import jednym stuknięciem</small></button>
+    </div>
     <h2 class="sec-title">Zarządzanie</h2>
     <div class="grid2">
       <a class="btn" href="#/dodaj/${esc(id)}">＋ Dodaj utwory</a>
       <a class="btn" href="#/edytuj/${esc(id)}">✎ Edytuj zbiór</a>
-      <button class="btn" id="share">↗ Udostępnij link</button>
-      <button class="btn" id="export">⇪ Zapisz do pliku</button>
     </div>
     <button class="btn danger wide" id="del-set">Usuń zbiór</button>
   `);
@@ -359,7 +387,7 @@ function step(d) {
   playCurrent();
 }
 
-audio.addEventListener('ended', () => { if (owner === 'player') step(1); });
+audio.addEventListener('ended', () => { if (owner === 'player') step(1); else if (owner === 'quiz') updateFragUi(); });
 
 function setMediaSession(t) {
   if (!('mediaSession' in navigator)) return;
@@ -461,6 +489,7 @@ function startQuiz(set, type, ids) {
   let order = ids ? shuffle(ids) : freshShuffle(set.tracks.map((t) => t.id), set.id + '-quiz');
   if (!ids && prefs.count !== 'all') order = order.slice(0, Number(prefs.count));
   quiz = { setId: set.id, type, order, idx: 0, answers: [], fragment: prefs.fragment, phase: 'ask', draft: null };
+  quizLoaded = null;
   quizSet = set;
   saveQuiz();
   go('#/quiz');
@@ -514,14 +543,22 @@ function renderQuestion(autoplay) {
       <span>Pytanie <b>${quiz.idx + 1}</b> / ${n}</span><span>Punkty: <b>${score}</b></span>
     </div>
     <div class="card fragment">
-      <button class="round main" id="q-play" aria-label="Odtwórz fragment">▶</button>
-      <div class="frag-info"><div class="bar"><i id="q-bar"></i></div><small class="muted" id="q-status">Fragment ${quiz.fragment} s</small></div>
+      <button class="round main" id="q-play" aria-label="Odtwórz">▶</button>
+      <div class="frag-info">
+        <input type="range" id="q-seek" min="0" max="1000" value="0" aria-label="Pozycja w utworze">
+        <div class="frag-row"><small class="muted" id="q-status"></small><button class="btn sm" id="q-restart" type="button">↺ Od początku</button></div>
+      </div>
     </div>
     ${fb}
     ${body}
     <button class="btn ghost wide" id="q-end">Zakończ quiz</button>
   `);
-  $('#q-play').addEventListener('click', () => playFragment());
+  $('#q-restart').addEventListener('click', () => playFragment());
+  $('#q-seek').addEventListener('input', (e) => {
+    if (owner !== 'quiz' || !audio.duration) return;
+    const max = quiz.fragment ? Math.min(quiz.fragment, audio.duration) : audio.duration;
+    audio.currentTime = (e.target.value / 1000) * max;
+  });
   $('#q-end').addEventListener('click', () => {
     if (quiz.answers.length && !confirm('Zakończyć quiz? Zobaczysz wynik z dotychczasowych odpowiedzi.')) return;
     if (!quiz.answers.length) { stopAudio(); quiz = null; ls.del(K.quiz); return history.length > 1 ? history.back() : go('#/'); }
@@ -553,32 +590,48 @@ function renderQuestion(autoplay) {
   else updateFragUi();
 }
 
-let fragTimer = null;
+let quizLoaded = null; // id utworu załadowanego w odtwarzaczu quizu
 async function playFragment() {
   const t = quizTrack();
   if (!t) return;
-  clearTimeout(fragTimer);
   try {
     $('#q-status').textContent = 'Ładowanie…';
     const ok = await playTrack(t, 'quiz');
-    if (!ok) { updateFragUi(); return; }
-  } catch (e) { toast(e.message, 'error'); updateFragUi(); return; }
+    quizLoaded = ok ? t.id : null;
+  } catch (e) { toast(e.message, 'error'); quizLoaded = null; }
   updateFragUi();
+}
+function quizToggle() {
+  const t = quizTrack();
+  if (owner === 'quiz' && t && quizLoaded === t.id && audio.src) {
+    if (!audio.paused) { audio.pause(); return; }
+    const limit = quiz.fragment || Infinity;
+    if (audio.ended || audio.currentTime >= limit) audio.currentTime = 0;
+    audio.play().catch(() => undefined);
+  } else playFragment();
 }
 function quizTick() {
   if (!quiz) return;
-  if (audio.currentTime >= quiz.fragment) audio.pause();
+  if (quiz.fragment && audio.currentTime >= quiz.fragment) audio.pause();
   updateFragUi();
 }
 function updateFragUi() {
-  const bar = $('#q-bar');
-  if (!bar || !quiz) return;
-  const p = owner === 'quiz' ? Math.min(1, audio.currentTime / quiz.fragment) : 0;
-  bar.style.width = `${p * 100}%`;
-  const playing = owner === 'quiz' && !audio.paused;
+  const seek = $('#q-seek');
+  if (!seek || !quiz) return;
+  const mine = owner === 'quiz' && quizLoaded === (quizTrack() || {}).id;
+  const dur = mine && Number.isFinite(audio.duration) ? audio.duration : 0;
+  const max = quiz.fragment ? Math.min(quiz.fragment, dur || quiz.fragment) : dur;
+  const cur = mine ? Math.min(audio.currentTime, max || 0) : 0;
+  seek.value = max ? (cur / max) * 1000 : 0;
+  seek.disabled = !mine || !max;
+  const playing = mine && !audio.paused;
   $('#q-play').textContent = playing ? '⏸' : '▶';
-  $('#q-status').textContent = playing ? `Słuchaj… ${Math.max(0, Math.ceil(quiz.fragment - audio.currentTime))} s` : (p >= 1 ? 'Koniec fragmentu – stuknij ▶, żeby posłuchać jeszcze raz' : `Fragment ${quiz.fragment} s`);
-  $('#q-play').onclick = playing ? () => audio.pause() : () => playFragment();
+  $('#q-play').setAttribute('aria-label', playing ? 'Pauza' : 'Odtwórz');
+  $('#q-play').onclick = quizToggle;
+  const done = mine && (audio.ended || (quiz.fragment && cur >= quiz.fragment));
+  $('#q-status').textContent = !mine ? (quiz.fragment ? `Pierwsze ${quiz.fragment} s utworu` : 'Cały utwór – zatrzymaj, kiedy chcesz')
+    : done ? 'Koniec – ▶ posłuchaj jeszcze raz'
+      : `${fmtT(cur)} / ${max ? fmtT(max) : '…'}${playing ? '' : ' · pauza'}`;
 }
 audio.addEventListener('pause', () => { if (owner === 'quiz') updateFragUi(); });
 audio.addEventListener('play', () => { if (owner === 'quiz') updateFragUi(); });
@@ -1020,8 +1073,14 @@ async function editView(id) {
     <section class="card step">
       <label>Nazwa zbioru<input id="e-name" value="${esc(set.name)}"></label>
       ${set.folders.length ? `<p class="muted">Foldery: ${set.folders.map((f) => esc(f.name)).join(', ')} <button class="btn sm" id="e-refresh">↻ Odśwież listę plików</button></p>` : ''}
+      <details><summary>Dodaj nagrania z innego folderu Dysku Google</summary>
+        <div class="row-inline"><input id="e-folder" inputmode="url" placeholder="https://drive.google.com/drive/folders/…"><button class="btn primary" id="e-folder-load">Wczytaj</button></div>
+        <p class="muted">Nowe pliki pojawią się na dole w „Pliki bez przypisania” – stamtąd dodasz je jako utwory albo wybierzesz w wierszu.</p>
+      </details>
     </section>
-    <section class="card step"><h2>Utwory (kolejność = kolejność słuchania)</h2><div id="table"></div></section>
+    <section class="card step"><h2>Utwory (kolejność = kolejność słuchania)</h2>
+      <p class="muted">Popraw autora, tytuł lub część, zmień plik nagrania (▶ – odsłuch), kolejność (↑ ↓) albo usuń utwór (✕).</p>
+      <div id="table"></div></section>
     <div class="savebar"><a class="btn ghost" href="#/zbior/${esc(id)}">Anuluj</a><button class="btn primary" id="e-save">✓ Zapisz zmiany</button></div>
   `);
   const table = $('#table');
@@ -1037,6 +1096,27 @@ async function editView(id) {
       toast(`Lista plików: ${model.files.length}.`, 'good');
     } catch (e) { toast(e.message, 'error'); }
     rf.disabled = false;
+  });
+  $('#e-folder-load').addEventListener('click', async () => {
+    const folder = drive.parseFolderLink($('#e-folder').value);
+    if (!folder) return toast('To nie wygląda na link do folderu Dysku Google.', 'error');
+    const btn = $('#e-folder-load');
+    btn.disabled = true;
+    try {
+      const info = await drive.folderInfo(folder);
+      const files = await drive.listAudio(folder);
+      const known = new Set(model.files.map((f) => f.id));
+      const fresh = files.filter((f) => !known.has(f.id));
+      model.files.push(...fresh);
+      if (!set.folders.some((f) => f.id === folder.id)) set.folders.push({ id: folder.id, resourceKey: folder.resourceKey, name: info.name });
+      dirty = true;
+      $('#e-folder').value = '';
+      renderTable(table, model, () => { dirty = true; });
+      toast(`Wczytano ${pl(fresh.length, 'nowy plik', 'nowe pliki', 'nowych plików')} z „${info.name}”.`, 'good');
+      const un = $('.unused', table);
+      if (un) { un.open = true; un.scrollIntoView({ behavior: 'smooth' }); }
+    } catch (e) { toast(e.message, 'error'); }
+    btn.disabled = false;
   });
   $('#e-save').addEventListener('click', async () => {
     const name = $('#e-name').value.trim();
@@ -1092,7 +1172,7 @@ async function settingsView() {
     </section>
     <section class="card step">
       <h2>O aplikacji</h2>
-      <p class="muted">Słuchawki – Kanony na WOM. Zbiory utworów i wyniki są zapisane tylko na tym urządzeniu. Aby przenieść zbiór na inne urządzenie, użyj „Udostępnij link” albo „Zapisz do pliku”.</p>
+      <p class="muted">Słuchawki – Kanony na WOM. Zbiory utworów i wyniki są zapisane tylko na tym urządzeniu. Aby przenieść zbiory na inne urządzenie, użyj „Eksportuj do pliku” (w zbiorze) albo „Eksportuj wszystkie zbiory” (na stronie głównej), a potem „Importuj z pliku” na drugim urządzeniu.</p>
     </section>
   `);
   $('#api-save').addEventListener('click', () => {
@@ -1111,17 +1191,23 @@ async function settingsView() {
 // ---------- udostępnianie, eksport, import ----------
 function packSet(set) {
   return {
-    app: 'sluchawki', v: 1, name: set.name, folders: set.folders,
+    app: 'sluchawki', v: 1, id: set.id, name: set.name, folders: set.folders, exportedAt: Date.now(),
     tracks: set.tracks.map((t) => [t.author, t.title, t.part, t.fileId, t.fileName, t.size, t.mimeType, t.resourceKey || '']),
   };
 }
 function unpackSet(d) {
   if (!d || d.app !== 'sluchawki' || !Array.isArray(d.tracks)) throw new Error('To nie jest zbiór Słuchawek.');
   return {
+    id: typeof d.id === 'string' && /^[\w-]{4,80}$/.test(d.id) ? d.id : '',
     name: String(d.name || 'Zbiór'), folders: Array.isArray(d.folders) ? d.folders : [],
     tracks: d.tracks.map((a) => ({ id: uid(), author: a[0] || '', title: a[1] || '', part: a[2] || '', fileId: a[3], fileName: a[4] || '', size: a[5] || 0, mimeType: a[6] || '', resourceKey: a[7] || '' }))
       .filter((t) => typeof t.fileId === 'string' && t.fileId),
   };
+}
+/** plik/link może zawierać jeden zbiór albo kilka ({ app, sets: [...] }) */
+function unpackAny(d) {
+  if (d && d.app === 'sluchawki' && Array.isArray(d.sets)) return d.sets.map(unpackSet);
+  return [unpackSet(d)];
 }
 const b64url = (bytes) => btoa(String.fromCharCode(...bytes)).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
 const unb64url = (s) => Uint8Array.from(atob(s.replace(/-/g, '+').replace(/_/g, '/')), (c) => c.charCodeAt(0));
@@ -1152,31 +1238,97 @@ async function shareSet(set) {
   try { await navigator.clipboard.writeText(url); toast('Link skopiowany – wyślij go komuś.', 'good'); } catch { prompt('Skopiuj link:', url); }
 }
 
-function exportSet(set) {
-  const blob = new Blob([JSON.stringify(packSet(set), null, 1)], { type: 'application/json' });
+function downloadJson(obj, name) {
+  const blob = new Blob([JSON.stringify(obj, null, 1)], { type: 'application/json' });
   const a = document.createElement('a');
   a.href = URL.createObjectURL(blob);
-  a.download = `${set.name.replace(/[\\/:*?"<>|]+/g, '_')}.sluchawki.json`;
+  a.download = name.replace(/[\\/:*?"<>|]+/g, '_');
   document.body.appendChild(a);
   a.click();
   a.remove();
   setTimeout(() => URL.revokeObjectURL(a.href), 5000);
 }
+const exportSet = (set) => { downloadJson(packSet(set), `${set.name}.sluchawki.json`); toast('Zapisano plik zbioru.', 'good'); };
+async function exportAll() {
+  const sets = (await db.listSets()).sort((a, b) => a.name.localeCompare(b.name, 'pl'));
+  if (!sets.length) return toast('Nie ma zbiorów do eksportu.');
+  const day = new Date().toISOString().slice(0, 10);
+  downloadJson({ app: 'sluchawki', v: 1, exportedAt: Date.now(), sets: sets.map(packSet) }, `Sluchawki-wszystkie-zbiory-${day}.sluchawki.json`);
+  toast(`Zapisano plik z ${pl(sets.length, 'zbiorem', 'zbiorami', 'zbiorami')}.`, 'good');
+}
+
+/** zapisuje zbiór z importu (zastępuje albo dodaje jako nowy) */
+async function saveImported(s, { lib = null, ask = true } = {}) {
+  const sets = await db.listSets();
+  const same = (s.id && sets.find((x) => x.id === s.id)) || (lib && sets.find((x) => x.lib && x.lib.file === lib.file)) || sets.find((x) => x.name === s.name);
+  const files = s.tracks.map((t) => ({ id: t.fileId, name: t.fileName, size: t.size, mimeType: t.mimeType, resourceKey: t.resourceKey }));
+  let set = null;
+  if (same) {
+    const replace = !ask || confirm(`Masz już zbiór „${same.name}”. Zastąpić go importowanym (${utwory(s.tracks.length)})?\n„Anuluj” zapisze go jako osobny zbiór.`);
+    if (replace) {
+      const known = new Set(same.files.map((f) => f.id));
+      set = { ...same, name: s.name, folders: s.folders, tracks: s.tracks, files: [...same.files, ...files.filter((f) => !known.has(f.id))] };
+    }
+  }
+  if (!set) {
+    const taken = new Set(sets.map((x) => x.name));
+    let name = s.name;
+    for (let i = 2; taken.has(name); i++) name = `${s.name} (${i})`;
+    set = { id: s.id && !sets.some((x) => x.id === s.id) ? s.id : uid(), name, createdAt: Date.now(), folders: s.folders, files, tracks: s.tracks };
+  }
+  if (lib) set.lib = lib;
+  await db.putSet(set);
+  await cleanupAudio();
+  return set;
+}
 
 async function importData(d) {
-  let s;
-  try { s = unpackSet(d); } catch (e) { return toast(e.message, 'error'); }
-  const sets = await db.listSets();
-  const same = sets.find((x) => x.name === s.name);
-  let set;
-  if (same && confirm(`Masz już zbiór „${s.name}”. Zastąpić go importowanym? („Anuluj” zapisze kopię.)`)) {
-    set = { ...same, folders: s.folders, tracks: s.tracks, files: same.files };
+  let list;
+  try { list = unpackAny(d); } catch (e) { return toast(e.message, 'error'); }
+  const saved = [];
+  for (const s of list) saved.push(await saveImported(s));
+  if (saved.length === 1) {
+    toast(`Zaimportowano „${saved[0].name}” (${utwory(saved[0].tracks.length)}).`, 'good');
+    location.replace(`#/zbior/${saved[0].id}`);
   } else {
-    set = { id: uid(), name: same ? `${s.name} (2)` : s.name, createdAt: Date.now(), folders: s.folders, files: s.tracks.map((t) => ({ id: t.fileId, name: t.fileName, size: t.size, mimeType: t.mimeType, resourceKey: t.resourceKey })), tracks: s.tracks };
+    toast(`Zaimportowano ${pl(saved.length, 'zbiór', 'zbiory', 'zbiorów')}.`, 'good');
+    if (location.hash === '#/' || !location.hash) home(); else location.replace('#/');
   }
-  await db.putSet(set);
-  toast(`Zaimportowano „${set.name}” (${utwory(set.tracks.length)}).`, 'good');
-  location.replace(`#/zbior/${set.id}`);
+}
+
+async function importFiles(fileList) {
+  for (const f of fileList) {
+    let d;
+    try { d = JSON.parse(await f.text()); } catch { toast(`„${f.name}” to nie jest plik zbioru Słuchawek.`, 'error'); continue; }
+    await importData(d);
+  }
+}
+
+// ---------- biblioteka zbiorów (pliki w folderze zbiory/ repozytorium) ----------
+async function loadLibrary() {
+  try {
+    const res = await fetch('zbiory/index.json', { cache: 'no-cache' });
+    if (!res.ok) return [];
+    const data = await res.json();
+    return Array.isArray(data.sets) ? data.sets.filter((x) => x && x.file && x.name) : [];
+  } catch { return []; }
+}
+
+async function importFromLibrary(entry) {
+  let d;
+  try {
+    const res = await fetch(`zbiory/${encodeURIComponent(entry.file)}`, { cache: 'no-cache' });
+    if (!res.ok) throw new Error('http');
+    d = await res.json();
+  } catch { toast('Nie udało się pobrać zbioru z biblioteki. Sprawdź internet.', 'error'); return home(); }
+  let list;
+  try { list = unpackAny(d); } catch (e) { toast(e.message, 'error'); return home(); }
+  const sets = await db.listSets();
+  const mine = sets.find((x) => x.lib && x.lib.file === entry.file);
+  if (mine && !confirm(`Zaktualizować „${mine.name}” do wersji z biblioteki? Twoje zmiany w tym zbiorze zostaną zastąpione (wyniki quizów zostają).`)) return home();
+  const set = await saveImported(list[0], { lib: { file: entry.file, hash: entry.hash }, ask: !mine });
+  toast(`${mine ? 'Zaktualizowano' : 'Dodano'} „${set.name}”.`, 'good');
+  home();
 }
 
 async function importView(data) {

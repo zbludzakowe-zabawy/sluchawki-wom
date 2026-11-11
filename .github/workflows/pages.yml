@@ -29,6 +29,8 @@ jobs:
           mkdir _site
           cp -r index.html style.css manifest.webmanifest sw.js js icons _site/
           rm -f _site/icons/icon.svg
+          if [ -d zbiory ]; then mkdir -p _site/zbiory && cp zbiory/*.json _site/zbiory/ 2>/dev/null || true; fi
+          node tools/build-library.mjs _site
           node tools/build-sw.mjs _site
       - uses: actions/upload-pages-artifact@v3
         with:
