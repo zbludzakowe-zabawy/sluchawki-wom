@@ -193,7 +193,9 @@ label > input, label > select { margin-top: 4px; }
 .quiz-top b { color: var(--ink); }
 .fragment { display: flex; align-items: center; gap: 14px; margin-bottom: 12px; }
 .frag-info { flex: 1; }
-.frag-info .bar { margin: 0 0 6px; height: 10px; }
+.frag-info { min-width: 0; }
+.frag-info input[type="range"] { padding: 0; min-height: 0; height: 28px; background: transparent; border: 0; accent-color: var(--accent); }
+.frag-row { display: flex; justify-content: space-between; align-items: center; gap: 8px; }
 .choices { list-style: none; margin: 10px 0; padding: 0; display: flex; flex-direction: column; gap: 8px; }
 .choices button {
   width: 100%; text-align: left; padding: 12px 14px; border-radius: 12px; min-height: 48px;
@@ -311,3 +313,16 @@ body.has-mini .app-banner { bottom: calc(84px + env(safe-area-inset-bottom)); }
 @media (max-width: 380px) {
   .grid2 { grid-template-columns: 1fr; }
 }
+
+/* ---------- zbiór: nagłówek, lista utworów, biblioteka ---------- */
+.title-row { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; }
+.title-row > div { min-width: 0; }
+.title-row .btn { flex: none; margin-top: 4px; }
+.tracks-box { margin-top: 16px; }
+.tracks-box summary { padding: 2px 0; }
+.track-list { margin: 10px 0 0; padding-left: 26px; display: flex; flex-direction: column; gap: 6px; }
+.track-list li { overflow-wrap: anywhere; }
+.lib-card { display: flex; align-items: center; gap: 12px; }
+.lib-card .set-main { flex: 1; }
+.lib-card .btn { flex: none; min-height: 40px; }
+.lib-card .badge-ok { color: var(--good); font-weight: 600; font-size: .9rem; flex: none; }
