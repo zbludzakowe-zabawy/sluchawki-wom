@@ -62,6 +62,7 @@ async function prepare(source) {
   g.drawImage(img, 0, 0, W, H);
   const d = g.getImageData(0, 0, W, H);
   const p = d.data;
+  const orig = new Uint8ClampedArray(p); // kolory – do rozpoznania uwag pisanych innym kolorem
   // odcienie szarości + obraz całkowy do progowania lokalnego (nierówne oświetlenie zdjęcia)
   const gray = new Float32Array(W * H);
   const integ = new Float64Array((W + 1) * (H + 1));
@@ -159,13 +160,79 @@ async function prepare(source) {
       for (let x = Math.max(0, (x0 - 1) * cs); x < Math.min(W, (x1 + 2) * cs); x++) erase[y * W + x] = 1;
     }
   }
+  const ink = new Uint8Array(W * H);
   for (let i = 0; i < W * H; i++) {
-    const v = dark[i] && !erase[i] ? 0 : 255;
+    ink[i] = dark[i] && !erase[i] ? 1 : 0;
+    const v = ink[i] ? 0 : 255;
     p[i * 4] = p[i * 4 + 1] = p[i * 4 + 2] = v;
     p[i * 4 + 3] = 255;
   }
   g.putImageData(d, 0, 0);
+  c.colors = { orig, ink };
   return c;
+}
+
+/** kolor tekstu słowa: 'k' (czarny/szary) albo odcień ('h0' = czerwony, 'h1' = żółty, … 'h4' = niebieski) */
+function wordColor(colors, W, H, b) {
+  const { orig, ink } = colors;
+  const x0 = Math.max(0, Math.floor(b.x0));
+  const x1 = Math.min(W, Math.ceil(b.x1));
+  const y0 = Math.max(0, Math.floor(b.y0));
+  // dolny skraj pomijamy – tam bywa czerwone falowane podkreślenie z korekty pisowni
+  const y1 = Math.min(H, Math.ceil(b.y1 - (b.y1 - b.y0) * 0.2));
+  const px = [];
+  const bg = [];
+  for (let y = y0; y < y1; y++) {
+    for (let x = x0; x < x1; x++) {
+      const i = y * W + x;
+      const r = orig[i * 4];
+      const g = orig[i * 4 + 1];
+      const bl = orig[i * 4 + 2];
+      const q = [0.299 * r + 0.587 * g + 0.114 * bl, r, g, bl];
+      if (ink[i]) px.push(q); else bg.push(q);
+    }
+  }
+  if (px.length < 8) return 'k';
+  // czarny tekst na kolorowym tle (np. niebieski nagłówek tabeli) przejmuje kolor tła – to nie jest kolorowy tekst
+  // tło: najjaśniejsza połowa pikseli poza literami (jasne brzegi liter to nie tło)
+  bg.sort((a, c) => c[0] - a[0]);
+  const bgAvg = avgColor(bg.slice(0, Math.ceil(bg.length / 2)));
+  const bgHue = bgAvg ? hueClass(...bgAvg, 25, 0.15) : 'k';
+  // środek kresek (najciemniejsza połowa) – brzegi liter mieszają się z kolorem tła komórki
+  px.sort((a, c) => a[0] - c[0]);
+  const c = hueClass(...avgColor(px.slice(0, Math.ceil(px.length / 2))), 50);
+  return c === bgHue ? 'k' : c;
+}
+
+function avgColor(qs) {
+  if (!qs.length) return null;
+  let r = 0; let g = 0; let bl = 0;
+  for (const q of qs) { r += q[1]; g += q[2]; bl += q[3]; }
+  return [r / qs.length, g / qs.length, bl / qs.length];
+}
+
+/** 'k' (bez wyraźnego koloru) albo odcień 'h0'…'h5' (h0 = czerwony, h4 = niebieski) */
+function hueClass(r, g, bl, minChroma, minRatio = 0.35) {
+  const mx = Math.max(r, g, bl);
+  const mn = Math.min(r, g, bl);
+  if (mx - mn < minChroma || (mx - mn) / mx < minRatio) return 'k';
+  let hue;
+  if (mx === r) hue = ((g - bl) / (mx - mn) + 6) % 6;
+  else if (mx === g) hue = (bl - r) / (mx - mn) + 2;
+  else hue = (r - g) / (mx - mn) + 4;
+  return 'h' + (Math.floor((hue * 60 + 30) / 60) % 6);
+}
+
+/** słowa napisane innym kolorem niż większość tekstu (np. czerwone uwagi) → note: true */
+function markNotes(words, colors, W, H) {
+  if (!colors || !words.length) return;
+  const count = {};
+  for (const w of words) {
+    w.color = wordColor(colors, W, H, w);
+    count[w.color] = (count[w.color] || 0) + 1;
+  }
+  const base = Object.keys(count).sort((a, b) => count[b] - count[a])[0];
+  for (const w of words) if (w.color !== base && w.color !== 'k') w.note = true;
 }
 
 async function ocrCanvas(canvas, onStatus, label) {
@@ -180,6 +247,7 @@ async function ocrCanvas(canvas, onStatus, label) {
   for (const b of data.blocks || []) for (const p of b.paragraphs || []) for (const l of p.lines || []) for (const wd of l.words || []) {
     words.push({ text: wd.text, conf: Math.round(wd.confidence), x0: wd.bbox.x0, y0: wd.bbox.y0, x1: wd.bbox.x1, y1: wd.bbox.y1 });
   }
+  markNotes(words, canvas.colors, canvas.width, canvas.height);
   return { text: data.text, words, width: canvas.width, height: canvas.height };
 }
 

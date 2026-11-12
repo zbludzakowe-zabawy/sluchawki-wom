@@ -333,3 +333,7 @@ body.has-mini .app-banner { bottom: calc(84px + env(safe-area-inset-bottom)); }
 .lib-card .badge-ok { color: var(--good); font-weight: 600; font-size: .9rem; flex: none; }
 
 .lock-box p { margin: 0 0 6px; color: var(--muted); }
+
+/* uwagi do utworu (np. czerwony dopisek na liście) */
+.note { display: block; color: var(--bad); font-size: .88rem; font-style: italic; overflow-wrap: anywhere; }
+.tfields input.note-input { color: var(--bad); font-style: italic; }

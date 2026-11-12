@@ -196,8 +196,25 @@ export function splitPart(title) {
   return { title: t, part: '' };
 }
 
-/** jedna linia → { author, title, part } albo null */
+// uwagi do utworu (np. dopisane na liście na czerwono) – w tekście listy jako „[uwagi: …]”;
+// nie są częścią tytułu ani fragmentu i nie biorą udziału w dopasowaniu ani w quizie
+const NOTE_RE = /\[\s*uwag[ai]\s*:\s*([^\]]*)\]?/gi;
+/** wydziela uwagi z linii: { text: linia bez uwag, note } */
+export function splitNote(line) {
+  const notes = [];
+  const text = String(line || '').replace(NOTE_RE, (m, n) => { if (clean(n)) notes.push(clean(n)); return ' '; });
+  return { text, note: notes.join('; ') };
+}
+
+/** jedna linia → { author, title, part[, note] } albo null */
 export function parseLine(line) {
+  const { text, note } = splitNote(line);
+  const p = parseCols(text);
+  if (p && note) p.note = note;
+  return p;
+}
+
+function parseCols(line) {
   let s = String(line || '').replace(/[“”„"]/g, '"').replace(/\s+$/, '');
   s = s.replace(/^\s*(\d{1,3}\s*[.)\]:]|[a-z]\))\s*/i, '').replace(/^\s*\d{1,3}\s+(?=\D)/, '');
   if (!clean(s) || clean(s).length < 3) return null;
@@ -247,10 +264,17 @@ export function parseList(text) {
   for (const [i, line] of lines.entries()) {
     if (!line.trim()) continue;
     if (numbered && i < firstNum) continue;
+    const prev = out[out.length - 1];
+    const { text: rest, note } = splitNote(line);
+    // linia z samymi uwagami – dopisujemy je do poprzedniego utworu
+    if (note && !clean(rest)) {
+      if (prev) prev.note = prev.note ? `${prev.note} ${note}` : note;
+      continue;
+    }
     const p = parseLine(line);
     if (!p) continue;
-    const prev = out[out.length - 1];
     if (prev && !p.author && /^[a-ząćęłńóśźż(]/.test(line.trim())) {
+      if (p.note) prev.note = prev.note ? `${prev.note} ${p.note}` : p.note;
       if (p.part && !prev.part) { prev.title = clean(prev.title + ' ' + p.title); prev.part = p.part; }
       else if (p.title) {
         const sp = splitPart(prev.title + ' ' + p.title + (p.part ? ' ' + p.part : ''));
@@ -608,4 +632,94 @@ function cryptoRandom() {
   const u = new Uint32Array(1);
   globalThis.crypto.getRandomValues(u);
   return u[0] / 2 ** 32;
+}
+
+// ---------- poprawianie typowych błędów odczytu (OCR) ----------
+
+// słowa częste na listach kanonów: OCR myli w nich pojedynczą literę („Ananim”, „gratorium”)
+const OCR_VOCAB = [
+  'Anonim', 'oratorium', 'kantata', 'symfonia', 'symfoniczny', 'symfoniczna', 'koncert', 'fortepianowy', 'fortepianowa',
+  'skrzypcowy', 'wiolonczelowy', 'smyczkowy', 'kwartet', 'kwintet', 'uwertura', 'preludium', 'nokturn', 'mazurek',
+  'polonez', 'ballada', 'etiuda', 'scherzo', 'sonata', 'toccata', 'menuet', 'menuetto', 'allegro', 'allegretto',
+  'andante', 'andantino', 'adagio', 'vivace', 'moderato', 'larghetto', 'maestoso', 'finale', 'pastorale', 'serenada',
+  'rapsodia', 'wariacje', 'fantazja', 'madrygał', 'requiem', 'magnificat', 'motet', 'pasja', 'Mesjasz', 'Alleluja',
+  'opera', 'balet', 'operetka', 'kołysanka', 'fortepian', 'Bogurodzica',
+];
+// nazwiska, w których OCR gubi znaki diakrytyczne
+const OCR_NAMES = ['Händel', 'Dvořák', 'Bedřich', 'Janáček', 'Górecki', 'Różycki', 'Żeleński', 'Paderewski'];
+const VOCAB_BY_LEN = new Map();
+for (const v of OCR_VOCAB) {
+  const k = v.length;
+  if (!VOCAB_BY_LEN.has(k)) VOCAB_BY_LEN.set(k, []);
+  VOCAB_BY_LEN.get(k).push(v);
+}
+const NAMES_BY_FOLD = new Map(OCR_NAMES.map((n) => [fold(n), n]));
+const withCase = (src, w) => (src[0] === src[0].toUpperCase() ? w[0].toUpperCase() : w[0].toLowerCase()) + w.slice(1);
+
+/** słowo z jedną zmienioną literą (nie na końcu – tam bywają odmiany: „symfonii”) → słowo ze słownika */
+function vocabWord(w) {
+  const low = w.toLowerCase();
+  const named = NAMES_BY_FOLD.get(fold(w));
+  if (named && named !== w) return named;
+  if (w.length < 6) return null;
+  for (const v of VOCAB_BY_LEN.get(w.length) || []) {
+    const vl = v.toLowerCase();
+    if (vl === low) return null;
+    let diff = -1;
+    let n = 0;
+    for (let i = 0; i < vl.length; i++) if (vl[i] !== low[i]) { n++; diff = i; }
+    if (n === 1 && diff < vl.length - 2) return withCase(w, v);
+  }
+  return null;
+}
+
+/** typowe błędy odczytu w jednej komórce tabeli (col: 'author' | 'title' | 'part') */
+export function fixOcr(s, col = 'title') {
+  let t = String(s || '');
+  // tonacje: „d-moli” / „d-mol1” → „d-moll”, „G-dut” → „G-dur”
+  t = t.replace(/\b([A-Ha-h](?:is|es|s)?)\s*-\s*m[o0][l1iI|]{2}(?![\p{L}])/gu, '$1-moll');
+  t = t.replace(/\b([A-Ha-h](?:is|es|s)?)\s*-\s*d[uü][rtn](?![\p{L}])/gu, '$1-dur');
+  // cyfry rzymskie z „l” zamiast „I”: „Ill” → „III”, „Vll” → „VII” (samo „Il” to też włoskie słowo – zostaje)
+  t = t.replace(/(?<![\p{L}\p{N}])[IVX][IVXl1]*[l1][IVXl1]*(?![\p{L}\p{N}])/gu, (m) => (m === 'Il' ? m : m.replace(/[l1]/g, 'I')));
+  // cudzysłowy: „»Razumowski”” → „„Razumowski””, „,,Jesień”” → „„Jesień””
+  t = t.replace(/(^|\s)(?:»|,,)(?=\S)/g, '$1„');
+  // część: „SZ. 1”, „gz. 3”, „Cz,1” → „cz. 1”
+  if (col === 'part') t = t.replace(/^\s*(?:[csg][zZ2]|[CSG][zZ2])\s*[.,]\s*(?=\d|[IVX]\b)/, 'cz. ');
+  // słowa ze słownika
+  t = t.replace(/[\p{L}]+/gu, (w) => vocabWord(w) || w);
+  // przecinek na końcu komórki to plamka (komórki nie kończą się przecinkiem)
+  return t.replace(/\s*,\s*$/, '').trim();
+}
+
+const wordsOf = (s) => String(s || '').match(/[\p{L}]+/gu) || [];
+
+/**
+ * poprawia słowa utworu według nazwy dopasowanego pliku (nazwy plików pisał człowiek):
+ * „kotowrotku” → „kołowrotku”, „Bazumowski” → „Razumowski”. Zmienia tylko słowa prawie identyczne
+ * (literówka) z jednoznacznym odpowiednikiem w nazwie pliku. Zwraca liczbę poprawionych słów.
+ */
+export function fixFromFileName(row, fileName) {
+  const fw = [...new Set(wordsOf(cleanFileName(fileName)))];
+  const fset = new Set(fw.map((w) => w.toLowerCase()));
+  let changed = 0;
+  for (const k of ['author', 'title', 'part']) {
+    if (!row[k]) continue;
+    row[k] = row[k].replace(/[\p{L}]+/gu, (w) => {
+      const low = w.toLowerCase();
+      if (w.length < 4 || fset.has(low)) return w;
+      let best = null;
+      let bestD = Infinity;
+      let tie = false;
+      for (const f of fw) {
+        if (Math.abs(f.length - w.length) > 1) continue;
+        const d = typoDistance(low, f.toLowerCase());
+        if (d < bestD) { best = f; bestD = d; tie = false; } else if (d === bestD && f.toLowerCase() !== best.toLowerCase()) tie = true;
+      }
+      const limit = w.length >= 7 ? 2 : 1;
+      if (!best || tie || bestD > limit) return w;
+      changed++;
+      return withCase(w, best);
+    });
+  }
+  return changed;
 }
