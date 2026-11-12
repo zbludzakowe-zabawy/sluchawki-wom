@@ -483,7 +483,9 @@ export function explainField(field, answer, correct) {
     // porównujemy z wariantem tytułu najbliższym odpowiedzi (np. bez dopisku w cudzysłowie)
     const a = A.map((x) => x.tok);
     const vs = titleVariantTexts(correct);
-    if (vs.length) correct = vs.reduce((best, v) => (titleScore(a, v) > titleScore(a, best) ? v : best), vs[0]);
+    // najpierw podobieństwo słów, potem zgodność liczb/tonacji („Concerto grosso” → wersja z „Concerto Grosso…”, nie sam dopisek)
+    const pick = (v) => { const c = noGenre(tokens(keyed(v))); return seqSim(a, c) + (numsOf(a) === numsOf(c) && keysOk(a, c) ? 0.5 : 0); };
+    if (vs.length) correct = vs.reduce((best, v) => (pick(v) > pick(best) ? v : best), vs[0]);
     // zaliczony tylko fragment tytułu (np. sam polski tytuł) – pokażemy pełny tytuł
     partial = vs.length > 1 && correct !== vs[0] && checkTitle(answer, full);
   }

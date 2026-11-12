@@ -143,6 +143,9 @@ test('quiz tekstowy – pokazanie pomyłek', () => {
   assert.deepEqual(explainField('title', 'Concerto grosso g-moll op. 6 nr 9', "Concerto Grosso g-moll ''Na Boże Narodzenie'', op. 6 nr 8"),
     [{ kind: 'wrong', given: '9', fix: '8' }]);
   assert.deepEqual(explainField('title', 'Halka', 'opera Halka'), []);
+  // część tytułu dobra – pokazujemy tylko braki, nie „Concerto – nie pasuje”
+  assert.deepEqual(explainField('title', 'Concerto grosso', "Concerto Grosso g-moll ''Na Boże Narodzenie'', op. 6 nr 8"),
+    ['g-moll', 'op', '6', '8'].map((fix) => ({ kind: 'missing', fix })));
   assert.deepEqual(explainField('part', 'II Alegro', 'cz. I Allegro'),
     [{ kind: 'wrong', given: 'II', fix: 'I' }, { kind: 'typo', given: 'Alegro', fix: 'Allegro' }]);
   assert.deepEqual(explainField('part', 'Pastorale', 'cz. 5. Pastorale'), []);
