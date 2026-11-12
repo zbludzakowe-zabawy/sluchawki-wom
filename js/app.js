@@ -4,7 +4,7 @@ import * as drive from './drive.js';
 import { readFileText } from './ocr.js';
 import { confetti } from './confetti.js';
 import {
-  parseList, matchAll, matchScore, confidence, MATCH_MIN, trackFromFileName, checkAnswer, explainAnswer, shuffle, fold, surname,
+  parseList, matchAll, matchScore, confidence, MATCH_MIN, trackFromFileName, checkAnswer, explainAnswer, shuffle, spreadOrder, questionCount, fold, surname,
 } from './textmatch.js';
 
 // ---------- narzędzia ----------
@@ -26,6 +26,7 @@ const ls = {
 };
 const K = { prefs: 'sluchawki-prefs', player: 'sluchawki-player', quiz: 'sluchawki-quiz', draft: 'sluchawki-draft', result: 'sluchawki-last-result' };
 const prefs = Object.assign({ fragment: 0, count: 'all' }, ls.get(K.prefs, {})); // fragment 0 = cały utwór
+if (!['75', 'all', '150'].includes(prefs.count)) prefs.count = 'all'; // dawne 10/20/30
 const savePrefs = () => ls.set(K.prefs, prefs);
 
 function toast(msg, kind = '') {
@@ -214,7 +215,7 @@ async function setView(id) {
     </div>
     <div class="opts">
       <label>Pytań: <select id="q-count">
-        ${['all', '10', '20', '30'].map((v) => `<option value="${v}" ${prefs.count === v ? 'selected' : ''}>${v === 'all' ? `wszystkie (${n})` : v}</option>`).join('')}
+        ${['75', 'all', '150'].map((v) => `<option value="${v}" ${prefs.count === v ? 'selected' : ''}>${{ 75: `ok. 75% (${questionCount('75', n)})`, all: `wszystkie (${n})`, 150: `150% (${questionCount('150', n)}) – niektóre 2 razy` }[v]}</option>`).join('')}
       </select></label>
       <label>Odtwarzaj: <select id="q-frag">
         ${[0, 15, 30, 60].map((v) => `<option value="${v}" ${prefs.fragment === v ? 'selected' : ''}>${v ? `pierwsze ${v} s` : 'cały utwór'}</option>`).join('')}
@@ -505,8 +506,11 @@ const saveQuiz = () => ls.set(K.quiz, quiz);
 function startQuiz(set, type, ids) {
   if (!set.tracks.length) return toast('Ten zbiór jest pusty.');
   if (type === 'choice' && set.tracks.length < 2) return toast('Do quizu wyboru potrzeba co najmniej 2 utworów.');
-  let order = ids ? shuffle(ids) : freshShuffle(set.tracks.map((t) => t.id), set.id + '-quiz');
-  if (!ids && prefs.count !== 'all') order = order.slice(0, Number(prefs.count));
+  const all = set.tracks.map((t) => t.id);
+  let order;
+  if (ids) order = shuffle([...new Set(ids)]);
+  else if (prefs.count === '150') order = spreadOrder(all, questionCount('150', all.length) - all.length);
+  else order = freshShuffle(all, set.id + '-quiz').slice(0, questionCount(prefs.count, all.length));
   quiz = { setId: set.id, type, order, idx: 0, answers: [], fragment: prefs.fragment, phase: 'ask', draft: null };
   quizLoaded = null;
   quizSet = set;

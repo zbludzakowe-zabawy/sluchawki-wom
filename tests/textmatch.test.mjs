@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {
   fold, tokens, parseLine, parseList, matchAll, matchScore, checkAnswer, checkAuthor, checkTitle, checkPart, explainField, answerSim, canonName,
-  cleanFileName, trackFromFileName, shuffle,
+  cleanFileName, trackFromFileName, shuffle, spreadOrder, questionCount,
 } from '../js/textmatch.js';
 
 test('fold i tokens', () => {
@@ -218,6 +218,30 @@ test('quiz tekstowy – imiona w różnych językach', () => {
   assert.deepEqual(explainField('author', 'Johan Sebastian Bach', 'Jan Sebastian Bach'), []);
   assert.deepEqual(explainField('author', 'G. F. Händel', 'Jerzy Fryderyk Händel'), []);
   assert.deepEqual(explainField('author', 'Karl Bach', 'Jan Sebastian Bach'), [{ kind: 'wrong', given: 'Karl' }]);
+});
+
+test('liczba pytań i powtórki w quizie', () => {
+  assert.equal(questionCount('75', 15), 11);
+  assert.equal(questionCount('all', 15), 15);
+  assert.equal(questionCount('150', 15), 23);
+  assert.equal(questionCount('75', 1), 1);
+  for (const n of [2, 3, 5, 15, 40]) {
+    const ids = Array.from({ length: n }, (_, i) => 'u' + i);
+    const extra = questionCount('150', n) - n;
+    for (let k = 0; k < 50; k++) {
+      const o = spreadOrder(ids, extra);
+      assert.equal(o.length, n + extra);
+      assert.deepEqual([...new Set(o)].sort(), [...ids].sort()); // każdy utwór co najmniej raz
+      const cnt = {};
+      for (const id of o) cnt[id] = (cnt[id] || 0) + 1;
+      assert.ok(Object.values(cnt).every((c) => c <= 2));
+      for (let i = 1; i < o.length; i++) assert.notEqual(o[i], o[i - 1], `raz za razem: ${o.join(' ')}`);
+      if (n >= 5) { // powtórka co najmniej kilka pytań dalej
+        const pos = {};
+        o.forEach((id, i) => { if (id in pos) assert.ok(i - pos[id] >= 3, `za blisko: ${o.join(' ')}`); pos[id] = i; });
+      }
+    }
+  }
 });
 
 test('shuffle zachowuje elementy', () => {
