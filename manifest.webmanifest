@@ -1,7 +1,7 @@
 {
   "name": "Słuchawki – Kanony na WOM",
   "short_name": "Słuchawki",
-  "description": "Nauka rozpoznawania utworów ze słuchu: słuchanie po kolei i losowo, quiz wyboru i quiz tekstowy.",
+  "description": "Nauka rozpoznawania utworów ze słuchu: słuchanie po kolei i losowo, quiz wyboru i quiz tekstowy. Aplikacja do użytku wewnętrznego, utworzona na potrzeby nauki na WOM.",
   "lang": "pl",
   "start_url": "./",
   "scope": "./",

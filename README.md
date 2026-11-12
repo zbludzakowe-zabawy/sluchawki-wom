@@ -1,5 +1,7 @@
 # Słuchawki – Kanony na WOM
 
+> Aplikacja do użytku wewnętrznego, utworzona na potrzeby nauki na WOM.
+
 Aplikacja do nauki rozpoznawania utworów ze słuchu. Działa w przeglądarce i instaluje się na telefonie jak zwykła aplikacja (PWA).
 
 ## Co potrafi
