@@ -717,6 +717,9 @@ export function fixFromFileName(row, fileName) {
       }
       const limit = w.length >= 7 ? 2 : 1;
       if (!best || tie || bestD > limit) return w;
+      // nie zabieramy polskich znaków: „Jarzębski” zostaje, gdy w nazwie pliku jest „Jarzebski”
+      const marks = (x) => [...x].filter((c) => fold(c) !== c.toLowerCase()).length;
+      if (fold(best) === fold(w) && marks(best) <= marks(w)) return w;
       changed++;
       return withCase(w, best);
     });
