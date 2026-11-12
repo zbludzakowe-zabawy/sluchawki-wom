@@ -155,7 +155,13 @@ test('quiz tekstowy – tonacje: wielka litera = dur, mała = moll', () => {
   const t = 'Polonez A-dur op. 40 nr 1';
   assert.equal(checkTitle('Polonez A op. 40 nr 1', t), true);
   assert.equal(checkTitle('polonez a dur op 40 nr 1', t), true);
-  assert.equal(checkTitle('Polonez op. 40 nr 1', t), true); // tonację można pominąć
+  assert.equal(checkTitle('Polonez op. 40 nr 1', t), false); // tonacja z listy jest obowiązkowa
+  assert.equal(checkTitle('Polonez op.40 nr 1 A', t), true); // kolejność dowolna
+  assert.equal(checkTitle('Polonez op. 40 nr 1 A-dur', t), true);
+  assert.deepEqual(explainField('title', 'Polonez op. 40 nr 1', t), [{ kind: 'missing', fix: 'A-dur' }]);
+  assert.equal(checkTitle('Na Boże Narodzenie', 'Concerto Grosso g-moll „Na Boże Narodzenie” op. 6 nr 8'), true); // sam dopisek
+  assert.equal(checkPart('1', 'tom 1 - Preludium C-dur'), true); // sam numer części
+  assert.equal(checkPart('Preludium', 'tom 1 - Preludium C-dur'), false);
   assert.equal(checkTitle('Polonez a op. 40 nr 1', t), false); // „a” = a-moll
   assert.equal(checkTitle('Polonez C-dur op. 40 nr 1', t), false);
   assert.equal(checkTitle('Polonez a-moll op. 40 nr 1', t), false);

@@ -301,8 +301,8 @@ export function keyed(s) {
   });
 }
 const keysOf = (ts) => ts.filter(isKey);
-/** podane tonacje muszą występować w poprawnej odpowiedzi */
-const keysOk = (a, c) => keysOf(a).every((k) => c.includes(k));
+/** tonacje muszą się zgadzać – podana zła albo pominięta (gdy jest na liście) = błąd */
+const keysOk = (a, c) => keysOf(a).sort().join(',') === keysOf(c).sort().join(',');
 
 /** ile literówek przepuszczamy w słowie tej długości */
 const typoLimit = (len) => (len >= 11 ? 3 : len >= 7 ? 2 : len >= 4 ? 1 : 0);
@@ -371,7 +371,8 @@ export function checkPart(answer, correct) {
   const c = tokens(keyed(correct), { roman: true });
   if (!c.length) return !a.length; // nie ma części – pole ma zostać puste
   if (!a.length) return false;
-  if (!keysOk(a, c)) return false;
+  // tonacja: obowiązkowa, gdy podano nazwę części (sam numer „I” = „cz. 1” wystarczy)
+  if (a.some((t) => !isNum(t)) ? !keysOk(a, c) : keysOf(a).length) return false;
   const aw = a.filter((t) => !isNum(t));
   const cw = c.filter((t) => !isNum(t));
   // podane liczby muszą się zgadzać („I” = „cz. 1”); same słowa („Pastorale”) też wystarczą
