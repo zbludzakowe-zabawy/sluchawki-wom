@@ -354,3 +354,6 @@ body.has-mini .app-banner { bottom: calc(84px + env(safe-area-inset-bottom)); }
 .imp-or { text-align: center; color: var(--muted); font-size: .85rem; margin: 8px 0 0; }
 .imp-panel .small { font-size: .82rem; margin: 0; }
 .offline-box.auto-dl { border: 2px solid var(--accent); }
+.choice-list { display: grid; gap: 10px; margin-top: 12px; }
+.wifi-ask { border: 2px solid var(--accent); }
+.wifi-ask p { margin: 0 0 8px; }

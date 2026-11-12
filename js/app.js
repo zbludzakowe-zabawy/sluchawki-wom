@@ -30,7 +30,7 @@ const ls = {
   set(k, v) { try { localStorage.setItem(k, JSON.stringify(v)); } catch { /* pełna pamięć – trudno */ } },
   del(k) { try { localStorage.removeItem(k); } catch { /* trudno */ } },
 };
-const K = { prefs: 'sluchawki-prefs', player: 'sluchawki-player', quiz: 'sluchawki-quiz', draft: 'sluchawki-draft', result: 'sluchawki-last-result' };
+const K = { prefs: 'sluchawki-prefs', player: 'sluchawki-player', quiz: 'sluchawki-quiz', draft: 'sluchawki-draft', result: 'sluchawki-last-result', wifi: 'sluchawki-wifi-wait' };
 const prefs = Object.assign({ fragment: 0, count: 'all' }, ls.get(K.prefs, {})); // fragment 0 = cały utwór
 if (!['75', 'all', '150'].includes(prefs.count)) prefs.count = 'all'; // dawne 10/20/30
 const savePrefs = () => ls.set(K.prefs, prefs);
@@ -137,12 +137,15 @@ async function home() {
   setHeader('', null);
   const sets = (await db.listSets()).sort((a, b) => a.name.localeCompare(b.name, 'pl'));
   await refreshDownloaded();
+  const waiting = wifiWaitList();
   const cards = sets.map((s) => {
     const n = s.tracks.length;
     const off = n && s.tracks.every(isDownloaded);
+    const st = dl && dl.setId === s.id ? ' · <span class="ok">⇩ pobieranie…</span>' : off ? ' · <span class="ok">dostępny offline</span>'
+      : waiting.includes(s.id) ? ' · ⏳ czeka na Wi‑Fi' : '';
     return `<a class="card set-card" href="#/zbior/${esc(s.id)}">
       <span class="set-ico" aria-hidden="true">♫</span>
-      <span class="set-main"><strong>${esc(s.name)}</strong><small>${utwory(n)}${off ? ' · <span class="ok">dostępny offline</span>' : ''}</small></span>
+      <span class="set-main"><strong>${esc(s.name)}</strong><small>${utwory(n)}${st}</small></span>
       <span class="chev" aria-hidden="true">›</span></a>`;
   }).join('');
   render(`
@@ -150,6 +153,7 @@ async function home() {
       <h1>Słuchawki</h1>
       <p>Kanony na WOM – ucz się rozpoznawać utwory ze słuchu.</p>
     </section>
+    <div id="wifi-ask"></div>
     <h2 class="sec-title">Nauka – wybierz zbiór</h2>
     ${sets.length ? `<div class="list">${cards}</div>` : `<div class="empty card">Nie masz jeszcze żadnego zbioru utworów.<br>Dodaj go z biblioteki, zaimportuj z pliku lub z linku albo utwórz własny.</div>`}
     <div id="library"></div>
@@ -201,6 +205,22 @@ async function home() {
   const ea = $('#exp-all');
   if (ea) ea.addEventListener('click', exportAll);
   renderLibrary(sets);
+  renderWifiAsk(sets);
+}
+
+/** iPhone (i inne telefony, które nie mówią, czy są na Wi‑Fi): pytamy przy otwarciu aplikacji */
+async function renderWifiAsk(sets) {
+  const box = $('#wifi-ask');
+  if (!box || connType() !== 'unknown' || dl) return;
+  const ids = wifiWaitList().filter((id) => !wifiSnoozed.has(id));
+  const list = ids.map((id) => sets.find((x) => x.id === id)).filter(Boolean);
+  if (!list.length) return;
+  const size = missingFiles(list).reduce((a, f) => a + (f.size || 0), 0);
+  box.innerHTML = `<div class="card wifi-ask"><p>⏳ <b>Czekają nagrania do pobrania:</b> ${list.map((x) => esc(x.name)).join(', ')}${size ? ` (ok. ${fmtMB(size)})` : ''}.</p>
+    <p><b>Jesteś teraz na Wi‑Fi?</b></p>
+    <div class="grid2"><button class="btn primary" id="wifi-yes">⇩ Tak, pobierz teraz</button><button class="btn" id="wifi-later">Później</button></div></div>`;
+  $('#wifi-yes').addEventListener('click', () => { box.innerHTML = ''; queueDownloads(list.map((x) => x.id)); });
+  $('#wifi-later').addEventListener('click', () => { list.forEach((x) => wifiSnoozed.add(x.id)); box.innerHTML = ''; });
 }
 
 async function renderLibrary(sets) {
@@ -238,6 +258,9 @@ async function setView(id) {
       ${auto ? `<p><b>⇩ Pobieram nagrania na to urządzenie</b>${size ? ` (ok. ${fmtMB(size)})` : ''} – aplikacja będzie działać szybciej i bez internetu.
         Nie chcesz? Stuknij „Nie pobieraj”. Możesz to zrobić później w części „Bez internetu”.</p>`
       : have === n && n ? `<p><span class="ok">✓ Wszystkie utwory są zapisane na tym urządzeniu.</span></p><button class="btn" id="off-del">Usuń z urządzenia</button>`
+        : wifiWaitList().includes(id) && !busy ? `<p>⏳ <b>Czeka na Wi‑Fi</b>${size ? ` (ok. ${fmtMB(size)})` : ''} – ${connType() === 'unknown'
+          ? 'przy otwarciu aplikacji zapytam, czy jesteś na Wi‑Fi.' : 'pobiorę, gdy telefon połączy się z Wi‑Fi, a aplikacja będzie otwarta.'}</p>
+           <button class="btn primary" id="off-get">⇩ Pobierz teraz</button> <button class="btn" id="off-nowait">Nie czekaj</button>`
         : `<p>${have ? `Pobrano ${have} z ${n}. ` : ''}Zapisz utwory na tym urządzeniu, żeby słuchać i robić quizy bez internetu${size ? ` (ok. ${fmtMB(size)})` : ''}.</p>
            <button class="btn primary" id="off-get" ${busy ? 'disabled' : ''}>⇩ Pobierz na urządzenie</button> ${have ? '<button class="btn" id="off-del">Usuń pobrane</button>' : ''}`}
       <div id="off-progress" ${auto || busy ? '' : 'hidden'}><div class="bar"><i></i></div><p class="muted" id="off-status"></p><button class="btn" id="off-cancel">${auto || (busy && dl.auto) ? 'Nie pobieraj' : 'Przerwij'}</button></div>
@@ -310,6 +333,7 @@ async function setView(id) {
     const dlNote = have ? ' Pobrane nagrania tego zbioru zostaną usunięte z urządzenia.' : '';
     if (!confirm(`Usunąć zbiór „${set.name}”?${dlNote} Pliki na Dysku Google zostaną nietknięte.`)) return;
     if (dl && dl.setId === id) dlCancel = true;
+    wifiWaitRemove(id);
     await db.deleteSet(id);
     await db.deleteResultsFor(id).catch(() => undefined);
     await cleanupAudio();
@@ -319,6 +343,8 @@ async function setView(id) {
   const get = $('#off-get');
   if (get) get.addEventListener('click', () => downloadSet(set));
   $('#off-cancel').addEventListener('click', () => { dlCancel = true; });
+  const nowait = $('#off-nowait');
+  if (nowait) nowait.addEventListener('click', () => { wifiWaitRemove(id); toast('Nagrania nie będą pobierane. Możesz je pobrać w każdej chwili.'); setView(id); });
   if (busy) showDownload();
   else if (auto) downloadSet(set, { auto: true });
   const del = $('#off-del');
@@ -389,10 +415,11 @@ function showDownload() {
 }
 
 async function downloadSet(set, { auto = false } = {}) {
-  if (dl) return;
+  if (dl) return 'busy';
   const quiet = (msg) => {
     if (auto) toast(`${msg} Nagrania możesz pobrać później w części „Bez internetu”.`, 'error'); else toast(msg, 'error');
     if (location.hash === `#/zbior/${set.id}`) setView(set.id);
+    return 'fail';
   };
   if (!navigator.onLine) return quiet('Do pobrania potrzebny jest internet.');
   if (!drive.hasApiKey()) return quiet('Brak klucza Google API – wpisz go w Ustawieniach.');
@@ -426,7 +453,8 @@ async function downloadSet(set, { auto = false } = {}) {
   } finally {
     dl = null;
   }
-  if (!(await db.getSet(set.id))) { await cleanupAudio(); return; } // nie zostawiamy nagrań usuniętego zbioru
+  if (!(await db.getSet(set.id))) { await cleanupAudio(); return 'fail'; } // nie zostawiamy nagrań usuniętego zbioru
+  if (dlCancel || !failed) wifiWaitRemove(set.id); // pobrany albo wyraźnie przerwany – już nie czeka
   if (dlCancel) {
     if (auto) { // „Nie pobieraj” – bez resztek: usuwamy to, co zdążyło się pobrać
       const keep = await usedElsewhere(set.id);
@@ -437,6 +465,102 @@ async function downloadSet(set, { auto = false } = {}) {
   else if (!failed) toast(`Gotowe – „${set.name}” działa bez internetu.`, 'good');
   if (location.hash === `#/zbior/${set.id}`) setView(set.id);
   else if (location.hash === '#/' || !location.hash) home();
+  return dlCancel ? 'cancel' : failed ? 'fail' : 'done';
+}
+
+// ---------- pytanie o pobranie po dodaniu zbioru, czekanie na Wi‑Fi ----------
+/** rodzaj połączenia: 'wifi', 'cellular' albo 'unknown' (iPhone/Safari nie mówi) */
+function connType() {
+  const c = navigator.connection;
+  const t = c && c.type;
+  if (t === 'wifi' || t === 'ethernet') return 'wifi';
+  if (t === 'cellular' || t === 'wimax' || t === 'bluetooth') return 'cellular';
+  return 'unknown';
+}
+const wifiWaitList = () => { const v = ls.get(K.wifi, []); return Array.isArray(v) ? v : []; };
+function wifiWaitAdd(ids) { ls.set(K.wifi, [...new Set([...wifiWaitList(), ...ids])]); }
+function wifiWaitRemove(id) { const v = wifiWaitList(); if (v.includes(id)) ls.set(K.wifi, v.filter((x) => x !== id)); }
+const wifiSnoozed = new Set(); // „Później” – nie pytamy do następnego otwarcia aplikacji
+
+/** pliki zbiorów, których jeszcze nie ma na urządzeniu (bez powtórzeń) */
+function missingFiles(sets) {
+  const seen = new Set();
+  return sets.flatMap((x) => x.tracks.flatMap(trackFiles)).filter((f) => !downloaded.has(f.fileId) && !seen.has(f.fileId) && seen.add(f.fileId));
+}
+
+/** kolejka pobierania kilku zbiorów (Wi‑Fi albo kilka zbiorów z jednego pliku) */
+const dlQueue = [];
+async function queueDownloads(ids) {
+  for (const id of ids) if (!dlQueue.includes(id)) dlQueue.push(id);
+  if (dl || queueDownloads.running) return;
+  queueDownloads.running = true;
+  try {
+    while (dlQueue.length) {
+      const set = await db.getSet(dlQueue.shift());
+      if (!set) continue;
+      toast(`Pobieram nagrania „${set.name}”…`);
+      if (location.hash === '#/' || !location.hash) home();
+      const r = await downloadSet(set);
+      if (r === 'cancel' || r === 'fail') { dlQueue.length = 0; break; }
+    }
+  } finally { queueDownloads.running = false; }
+}
+
+/** Wi‑Fi (tam, gdzie telefon to mówi) → pobieramy czekające zbiory */
+function checkWifi() {
+  if (!navigator.onLine || connType() !== 'wifi' || dl) return;
+  const ids = wifiWaitList();
+  if (ids.length) queueDownloads(ids);
+}
+
+/** po dodaniu zbiorów: pytanie, co zrobić z nagraniami (zanim pokażemy zbiór) */
+let pendingAsk = null;
+async function askDownload(ids) {
+  await refreshDownloaded();
+  const sets = (await Promise.all(ids.map((id) => db.getSet(id)))).filter(Boolean);
+  const target = sets.length === 1 ? `#/zbior/${sets[0].id}` : '#/';
+  if (!missingFiles(sets).length) return location.hash === target ? route() : location.replace(target);
+  pendingAsk = { ids: sets.map((x) => x.id), target };
+  location.replace('#/pobieranie');
+}
+
+async function downloadAskView() {
+  if (!pendingAsk) return location.replace('#/');
+  const { ids, target } = pendingAsk;
+  pendingAsk = null; // „wstecz” nie wraca do pytania
+  const sets = (await Promise.all(ids.map((id) => db.getSet(id)))).filter(Boolean);
+  if (!sets.length) return location.replace('#/');
+  await refreshDownloaded();
+  const size = missingFiles(sets).reduce((a, f) => a + (f.size || 0), 0);
+  const conn = connType();
+  setHeader('Nagrania', '#/');
+  render(`
+    <h1 class="page-title">Pobrać nagrania?</h1>
+    <div class="card"><p>${sets.length === 1 ? `Dodano zbiór <b>${esc(sets[0].name)}</b> (${utwory(sets[0].tracks.length)}).`
+      : `Dodano ${pl(sets.length, 'zbiór', 'zbiory', 'zbiorów')}: ${sets.map((x) => `<b>${esc(x.name)}</b>`).join(', ')}.`}</p>
+      <p>Nagrania zapisane na tym urządzeniu odtwarzają się szybciej i działają bez internetu${size ? ` – to ok. <b>${fmtMB(size)}</b>` : ''}.</p>
+      ${conn === 'cellular' ? '<p class="hint">Jesteś teraz na danych komórkowych.</p>' : conn === 'wifi' ? '<p class="muted">Jesteś teraz na Wi‑Fi.</p>' : ''}</div>
+    <div class="choice-list">
+      <button class="btn big primary" data-dl="now">⇩ Pobierz teraz${size ? `<small>ok. ${fmtMB(size)}</small>` : ''}</button>
+      <button class="btn big" data-dl="wifi">📶 Poczekaj na Wi‑Fi<small>${conn === 'unknown'
+        ? 'przy następnym otwarciu aplikacji zapytam, czy jesteś na Wi‑Fi'
+        : 'pobiorę, gdy telefon połączy się z Wi‑Fi, a aplikacja będzie otwarta'}</small></button>
+      <button class="btn big" data-dl="no">Nie pobieraj<small>słuchanie przez internet; pobrać można później</small></button>
+    </div>
+  `);
+  $$('[data-dl]').forEach((b) => b.addEventListener('click', () => {
+    const c = b.dataset.dl;
+    if (c === 'now') {
+      ids.forEach(wifiWaitRemove);
+      if (sets.length === 1) autoDownload = sets[0].id; else queueDownloads(sets.map((x) => x.id));
+    } else if (c === 'wifi') {
+      wifiWaitAdd(sets.map((x) => x.id));
+      sets.forEach((x) => wifiSnoozed.add(x.id)); // nie pytamy od razu jeszcze raz na stronie głównej
+      toast(conn === 'unknown' ? 'Dobrze – zapytam przy następnym otwarciu aplikacji.' : 'Dobrze – pobiorę nagrania, gdy będzie Wi‑Fi.');
+      if (conn === 'wifi') setTimeout(checkWifi, 0);
+    } else ids.forEach(wifiWaitRemove);
+    location.replace(target);
+  }));
 }
 
 // ---------- odtwarzacz ----------
@@ -1530,12 +1654,10 @@ async function importData(d) {
   for (const s of list) saved.push(await saveImported(s));
   if (saved.length === 1) {
     toast(`Zaimportowano „${saved[0].name}” (${utwory(saved[0].tracks.length)}).`, 'good');
-    autoDownload = saved[0].id;
-    location.replace(`#/zbior/${saved[0].id}`);
   } else {
     toast(`Zaimportowano ${pl(saved.length, 'zbiór', 'zbiory', 'zbiorów')}.`, 'good');
-    if (location.hash === '#/' || !location.hash) home(); else location.replace('#/');
   }
+  await askDownload(saved.map((x) => x.id));
 }
 
 async function importFiles(fileList) {
@@ -1570,8 +1692,7 @@ async function importFromLibrary(entry) {
   if (mine && !confirm(`Zaktualizować „${mine.name}” do wersji z biblioteki? Twoje zmiany w tym zbiorze zostaną zastąpione (wyniki quizów zostają).`)) return home();
   const set = await saveImported(list[0], { lib: { file: entry.file, hash: entry.hash }, ask: !mine });
   toast(`${mine ? 'Zaktualizowano' : 'Dodano'} „${set.name}”.`, 'good');
-  autoDownload = set.id;
-  location.hash = `#/zbior/${set.id}`;
+  await askDownload([set.id]);
 }
 
 async function importView(data) {
@@ -1644,6 +1765,7 @@ const routes = [
   [/^#\/ustawienia$/, settingsView],
   [/^#\/import\/([\w-]+)$/, importView],
   [/^#\/import$/, importLinkView],
+  [/^#\/pobieranie$/, downloadAskView],
 ];
 let lastHash = null;
 async function route() {
@@ -1670,9 +1792,13 @@ window.addEventListener('pagehide', flush);
 window.addEventListener('online', () => document.body.classList.remove('offline'));
 window.addEventListener('offline', () => document.body.classList.add('offline'));
 if (!navigator.onLine) document.body.classList.add('offline');
+window.addEventListener('online', checkWifi);
+if (navigator.connection && navigator.connection.addEventListener) navigator.connection.addEventListener('change', checkWifi);
+document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible') checkWifi(); });
 
 (async () => {
   if (player) playerSet = await db.getSet(player.setId).catch(() => null);
   if (location.hash === '#/sluchaj' && !player) location.replace('#/');
-  route();
+  await route();
+  checkWifi();
 })();
