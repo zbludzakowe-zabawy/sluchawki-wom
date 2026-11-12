@@ -1313,6 +1313,7 @@ async function settingsView() {
     </section>
     <section class="card step">
       <h2>O aplikacji</h2>
+      <p><strong>Aplikacja do użytku wewnętrznego, utworzona na potrzeby nauki na WOM.</strong></p>
       <p class="muted">Słuchawki – Kanony na WOM. Zbiory utworów i wyniki są zapisane tylko na tym urządzeniu. Aby przenieść zbiory na inne urządzenie, użyj „Eksportuj do pliku” (w zbiorze) albo „Eksportuj wszystkie zbiory” (na stronie głównej), a potem „Importuj z pliku” na drugim urządzeniu.</p>
     </section>
   `);
