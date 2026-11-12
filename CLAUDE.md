@@ -42,6 +42,7 @@ Zbiór (`sets`): `{ id, name, createdAt, updatedAt, folders:[{id,resourceKey,nam
 
 Format pliku/eksportu (`packSet`): `{ app:'sluchawki', v:1, id, name, folders, exportedAt, tracks:[[author, title, part, fileId, fileName, size, mimeType, resourceKey, note?, extra?], …] }` – 9. pole (uwagi, może być '') tylko, gdy są uwagi albo `extra`; 10. pole: `[[fileId, fileName, size, mimeType, resourceKey], …]`.
 Eksport wszystkich: `{ app:'sluchawki', v:1, sets:[…] }`. Import rozpoznaje zbiór po `id`, potem po nazwie (zastąp / zapisz osobno).
+Import z linku (`#/import` → `importLinkView`, `fetchSetFromLink`): link „Udostępnij”, plik na Dysku (`drive.parseFileLink` + `drive.fileText`, `alt=media&key=`), zwykły URL `.json` (fetch – zależy od CORS strony); potem `importPreview`.
 Link „Udostępnij”: `#/import/` + `z` + base64url(deflate-raw(JSON)) (albo `j` + base64url(JSON) bez kompresji).
 
 Stan w localStorage: `sluchawki-prefs` (liczba pytań `count`: '75' / 'all' / '150' – `questionCount`; przy 150% `spreadOrder` – połowa utworów drugi raz, nigdy raz za razem; `fragment`: 0 = cały utwór), `sluchawki-player`, `sluchawki-quiz` (wznawianie quizu), `sluchawki-draft` (szkic dodawania), `sluchawki-last-result`, `sluchawki-api-key` (własny klucz – nadpisuje config).

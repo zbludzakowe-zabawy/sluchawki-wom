@@ -151,13 +151,14 @@ async function home() {
       <p>Kanony na WOM – ucz się rozpoznawać utwory ze słuchu.</p>
     </section>
     <h2 class="sec-title">Nauka – wybierz zbiór</h2>
-    ${sets.length ? `<div class="list">${cards}</div>` : `<div class="empty card">Nie masz jeszcze żadnego zbioru utworów.<br>Dodaj go z biblioteki, zaimportuj z pliku albo utwórz własny.</div>`}
+    ${sets.length ? `<div class="list">${cards}</div>` : `<div class="empty card">Nie masz jeszcze żadnego zbioru utworów.<br>Dodaj go z biblioteki, zaimportuj z pliku lub z linku albo utwórz własny.</div>`}
     <div id="library"></div>
     <h2 class="sec-title">Dodawanie, import i eksport</h2>
     <div class="grid2">
       <a class="btn big" href="#/dodaj">＋ Nowy zbiór</a>
       <label class="btn big">⇩ Importuj z pliku<small>plik .sluchawki.json</small><input type="file" id="imp-file" accept=".json,application/json" multiple hidden></label>
     </div>
+    <a class="btn wide" href="#/import">🔗 Importuj z linku<small>link „Udostępnij”, plik na Dysku Google albo w internecie</small></a>
     ${sets.length ? '<button class="btn wide" id="exp-all">⇪ Eksportuj wszystkie zbiory do pliku</button>' : ''}
     ${!drive.hasApiKey() ? `<p class="hint">Do słuchania z Dysku Google potrzebny jest klucz API – <a href="#/ustawienia">ustaw go w Ustawieniach</a>.</p>` : ''}
   `);
@@ -1503,14 +1504,84 @@ async function importView(data) {
     render('<div class="card empty">Ten link jest uszkodzony albo niekompletny.</div><a class="btn wide" href="#/">Strona główna</a>');
     return;
   }
-  const s = unpackSet(d);
+  importPreview(d, 'Ktoś udostępnił Ci');
+}
+
+/** podgląd zbioru (albo kilku zbiorów) przed zapisem */
+function importPreview(d, lead) {
+  const list = unpackAny(d);
+  const one = (s) => `<p>${lead} zbiór <b>${esc(s.name)}</b> (${utwory(s.tracks.length)}).</p>
+    <ol class="mini-list">${s.tracks.slice(0, 8).map((t) => `<li>${esc(trackLabel(t))}</li>`).join('')}${s.tracks.length > 8 ? '<li>…</li>' : ''}</ol>`;
   render(`
     <h1 class="page-title">Import zbioru</h1>
-    <div class="card"><p>Ktoś udostępnił Ci zbiór <b>${esc(s.name)}</b> (${utwory(s.tracks.length)}).</p>
-    <ol class="mini-list">${s.tracks.slice(0, 8).map((t) => `<li>${esc(trackLabel(t))}</li>`).join('')}${s.tracks.length > 8 ? '<li>…</li>' : ''}</ol></div>
-    <div class="grid2"><a class="btn" href="#/">Anuluj</a><button class="btn primary" id="imp-ok">Zapisz zbiór</button></div>
+    <div class="card">${list.length === 1 ? one(list[0])
+    : `<p>${lead} ${pl(list.length, 'zbiór', 'zbiory', 'zbiorów')}:</p><ul class="mini-list">${list.map((s) => `<li><b>${esc(s.name)}</b> (${utwory(s.tracks.length)})</li>`).join('')}</ul>`}</div>
+    <div class="grid2"><a class="btn" href="#/">Anuluj</a><button class="btn primary" id="imp-ok">${list.length === 1 ? 'Zapisz zbiór' : 'Zapisz zbiory'}</button></div>
   `);
   $('#imp-ok').addEventListener('click', () => importData(d));
+}
+
+/** link → dane zbioru: link „Udostępnij”, plik na Dysku Google albo plik .json w internecie */
+async function fetchSetFromLink(link) {
+  const s = String(link || '').trim();
+  const share = s.match(/#\/import\/([\w-]+)/);
+  if (share) {
+    try { return await decodeShare(share[1]); } catch { throw new Error('Ten link „Udostępnij” jest uszkodzony albo niekompletny – skopiuj go jeszcze raz w całości.'); }
+  }
+  if (/drive\.google\.com\/drive\/(?:u\/\d+\/)?folders\//.test(s)) throw new Error('To link do folderu. Podaj link do pliku zbioru (.sluchawki.json) – w Dysku Google: plik → Udostępnij → Kopiuj link.');
+  const gfile = drive.parseFileLink(s);
+  let text;
+  if (gfile) text = await drive.fileText(gfile);
+  else {
+    let url;
+    try { url = new URL(s); } catch { throw new Error('To nie wygląda na link. Wklej cały adres zaczynający się od https://'); }
+    if (!/^https?:$/.test(url.protocol)) throw new Error('To nie wygląda na link. Wklej cały adres zaczynający się od https://');
+    let res;
+    try { res = await fetch(url.href, { cache: 'no-cache' }); } catch {
+      throw new Error('Nie udało się pobrać pliku. Brak internetu albo ta strona nie pozwala na pobieranie przez aplikację – pobierz plik i użyj „Importuj z pliku”.');
+    }
+    if (!res.ok) throw new Error(`Nie udało się pobrać pliku (błąd ${res.status}). Sprawdź link.`);
+    text = await res.text();
+  }
+  try { return JSON.parse(text); } catch { throw new Error('Pod tym linkiem nie ma pliku zbioru Słuchawek.'); }
+}
+
+async function importLinkView() {
+  setHeader('Import z linku', '#/');
+  render(`
+    <h1 class="page-title">Import z linku</h1>
+    <section class="card step">
+      <p class="muted">Wklej link do zbioru:</p>
+      <ul class="muted">
+        <li>link z przycisku <b>↗ Udostępnij link</b> w aplikacji,</li>
+        <li>link do pliku <i>.sluchawki.json</i> na Dysku Google (udostępnionego „Każdy, kto ma link”),</li>
+        <li>albo adres pliku <i>.json</i> w internecie.</li>
+      </ul>
+      <div class="row-inline"><input id="imp-link" inputmode="url" autocomplete="off" placeholder="https://…" aria-label="Link do zbioru"><button class="btn primary" id="imp-go">Wczytaj</button></div>
+      <p class="muted" id="imp-status" hidden></p>
+    </section>
+  `);
+  const go = async () => {
+    const link = $('#imp-link').value.trim();
+    if (!link) return toast('Wklej link.', 'error');
+    const btn = $('#imp-go');
+    btn.disabled = true;
+    $('#imp-status').hidden = false;
+    $('#imp-status').textContent = 'Wczytywanie…';
+    let d;
+    try {
+      d = await fetchSetFromLink(link);
+      unpackAny(d);
+    } catch (e) {
+      btn.disabled = false;
+      $('#imp-status').hidden = true;
+      return toast(e.message, 'error');
+    }
+    importPreview(d, 'Pod linkiem jest');
+  };
+  $('#imp-go').addEventListener('click', go);
+  $('#imp-link').addEventListener('keydown', (e) => { if (e.key === 'Enter') go(); });
+  $('#imp-link').focus();
 }
 
 // ---------- router ----------
@@ -1524,6 +1595,7 @@ const routes = [
   [/^#\/wynik$/, resultView],
   [/^#\/ustawienia$/, settingsView],
   [/^#\/import\/([\w-]+)$/, importView],
+  [/^#\/import$/, importLinkView],
 ];
 let lastHash = null;
 async function route() {
