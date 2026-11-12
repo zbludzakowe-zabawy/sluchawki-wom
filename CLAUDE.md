@@ -34,12 +34,13 @@ Właścicielka pisze po polsku; cała aplikacja, komunikaty, commity i opisy PR 
 Publikacja: `.github/workflows/pages.yml` (push do `main`) → testy → kopiuje pliki do `_site` (+ `zbiory/*.json`) → `build-library` → `build-sw` → Pages.
 
 ## Model danych
-Zbiór (`sets`): `{ id, name, createdAt, updatedAt, folders:[{id,resourceKey,name}], files:[{id,name,size,mimeType,resourceKey}], tracks:[{id, author, title, part, note?, fileId, fileName, size, mimeType, resourceKey}], lib? }`
+Zbiór (`sets`): `{ id, name, createdAt, updatedAt, folders:[{id,resourceKey,name}], files:[{id,name,size,mimeType,resourceKey}], tracks:[{id, author, title, part, note?, fileId, fileName, size, mimeType, resourceKey, extra?:[{fileId, fileName, size, mimeType, resourceKey}]}], lib? }`
 - `note` – uwagi do utworu (np. czerwony dopisek na liście); nigdy nie jest częścią tytułu ani fragmentu, nie bierze udziału w dopasowaniu plików ani w sprawdzaniu quizu; pokazywane na liście, w odtwarzaczu i w quizie po odpowiedzi.
+- `extra` – kolejne pliki utworu nagranego w kilku plikach (rzadkie); `fileId` = fragment 1. W `app.js` zawsze przez `trackFiles(t)` / `isDownloaded(t)` (pobieranie, sprzątanie, import).
 - `tracks` – kolejność = kolejność „po kolei”. `files` – wszystkie pliki audio z folderów (do zmiany przypisania w edytorze).
 - `lib: { file, hash }` – zbiór dodany z biblioteki → **tylko do odczytu** (🔒). Edycja i dopisywanie utworów zablokowane; „⧉ Własna kopia” tworzy zwykły zbiór „… (moja kopia)”. Zmienia go tylko „↻ Aktualizuj” (gdy `hash` w `zbiory/index.json` się zmieni). Import pliku nie nadpisuje zbioru z `lib`.
 
-Format pliku/eksportu (`packSet`): `{ app:'sluchawki', v:1, id, name, folders, exportedAt, tracks:[[author, title, part, fileId, fileName, size, mimeType, resourceKey, note?], …] }` – 9. pole tylko, gdy są uwagi.
+Format pliku/eksportu (`packSet`): `{ app:'sluchawki', v:1, id, name, folders, exportedAt, tracks:[[author, title, part, fileId, fileName, size, mimeType, resourceKey, note?, extra?], …] }` – 9. pole (uwagi, może być '') tylko, gdy są uwagi albo `extra`; 10. pole: `[[fileId, fileName, size, mimeType, resourceKey], …]`.
 Eksport wszystkich: `{ app:'sluchawki', v:1, sets:[…] }`. Import rozpoznaje zbiór po `id`, potem po nazwie (zastąp / zapisz osobno).
 Link „Udostępnij”: `#/import/` + `z` + base64url(deflate-raw(JSON)) (albo `j` + base64url(JSON) bez kompresji).
 
@@ -48,6 +49,7 @@ Stan w localStorage: `sluchawki-prefs` (liczba pytań `count`: '75' / 'all' / '1
 ## Najważniejsze zachowania
 - **Uwagi z obrazu**: `prepare()` zachowuje kolory, `markNotes()` w `js/ocr.js` oznacza słowa w innym kolorze niż większość tekstu (`note: true`, kolor ze środka kresek, bez dolnego skraju – czerwone podkreślenia korekty pisowni nie liczą się; kolor równy kolorowi tła komórki, np. czarny tekst w niebieskim nagłówku z JPG, też nie); `layoutText` daje je jako `\t[uwagi: …]`, `parseList` wydziela `[uwagi: …]` / `[uwaga: …]` do `note`.
 - **Poprawki błędów OCR**: `fixOcr` (w `layoutText`, każda komórka) – tonacje („d-moli” → „d-moll”), cyfry rzymskie („Ill” → „III”, ale „Il” zostaje), „»…”” → „„…””, „SZ./gz.” → „cz.” w części, słownik `OCR_VOCAB` (jedna litera, nie w 2 ostatnich – odmiany) i `OCR_NAMES` (zgubione znaki: „Handel” → „Händel”), przecinek na końcu komórki. Przy dodawaniu (`model.fixWords`) `fixFromFileName` poprawia literówki według nazwy dopasowanego pliku (dopasowania pewne i „sprawdź”) – toast z liczbą poprawek.
+- **Utwór z kilku plików**: `fragmentSuggestions` (textmatch) – plik bez przypisania o nazwie prawie identycznej (`nameSimilarity` ≥ 0.85) z plikiem przypisanym → w tabeli (dodawanie i edycja) ramka ⚠ i „＋ Dodaj jako fragment N”; ręcznie: lista „＋ kolejny plik tego utworu”. Fragmenty układane według nazwy (`sortFragments`). Odtwarzacz: `player.frag`, ⏮/⏭ i koniec pliku przechodzą po fragmentach, napis „Pozycja X z N · fragment k z n”. Quiz (cały utwór): fragmenty grają jeden po drugim, „Fragment k z n”; przy 15/30/60 s – tylko początek pierwszego pliku.
 - **Dodawanie**: nazwa zbioru (nowy / istniejący, ale nie z biblioteki) → lista ze zdjęcia/PDF/tekstu (`readFileText` → `layoutText` → edytowalny tekst → `parseList`) → link do folderu Dysku → automatyczne dopasowanie (`matchAll`, zachłannie, próg `MATCH_MIN` 0.35; kolory: ≥0.7 pewne, ≥0.5 sprawdź) → ręczne poprawki → „Zatwierdź”.
 - **Nazwy plików na Dysku** mają format `Autor - Tytuł - Część.mp3`, np. `Arcangelo Corelli - Concerto Grosso g-moll ''Na Boże Narodzenie'', op. 6 nr 8 - cz. 5. Pastorale.mp3`.
 - **Nauka**: po kolei, losowo (inna kolejność niż ostatnio – `freshShuffle`), według autora (`groupAuthors` po nazwisku).
