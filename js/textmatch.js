@@ -341,10 +341,11 @@ export function checkAuthor(answer, correct) {
 const GENRE = new Set(['opera', 'balet', 'operetka', 'musical', 'piesn', 'oratorium', 'kantata']);
 const noGenre = (ts) => ts.filter((t) => !GENRE.has(t));
 
-/** warianty tytułu (tekst): pełny, bez dopisku w nawiasie/cudzysłowie, sam dopisek */
+/** warianty tytułu (tekst): pełny, bez dopisku w nawiasie/cudzysłowie, sam dopisek, części oddzielone „/” (tytuł po polsku i w oryginale) */
 function titleVariantTexts(title) {
   const t = String(title || '').replace(/[“”„"]|''/g, '"');
   const out = new Set([t]);
+  if (t.includes('/')) for (const x of t.split('/')) out.add(x);
   for (const re of [/\(([^)]*)\)/g, /"([^"]*)"/g]) {
     const inner = [...t.matchAll(re)].map((m) => m[1]);
     if (!inner.length) continue;
@@ -413,7 +414,7 @@ function wordTokens(text, { keys, ...opts }) {
 }
 
 /**
- * Porównanie słowo po słowie. Zwraca listę uwag (+ {kind:'keymissing', fix} – brak tonacji, ale pole zaliczone przez dopisek):
+ * Porównanie słowo po słowie. Zwraca listę uwag (+ {kind:'keymissing', fix} – brak tonacji, ale pole zaliczone przez dopisek; {kind:'fulltitle', fix} – zaliczony fragment tytułu, np. sam polski):
  * {kind:'typo', given, fix} – literówka (zaliczona), {kind:'wrong', given, fix?} – złe słowo / zła liczba,
  * {kind:'missing', fix} – brakuje słowa lub liczby, {kind:'empty'} – puste pole, {kind:'nopart'} – utwór nie ma części.
  */
@@ -421,12 +422,15 @@ export function explainField(field, answer, correct) {
   const roman = field === 'part';
   const keys = field !== 'author';
   const full = correct;
+  let partial = false;
   const A = wordTokens(answer, { roman, keys });
   if (field === 'title') {
     // porównujemy z wariantem tytułu najbliższym odpowiedzi (np. bez dopisku w cudzysłowie)
     const a = A.map((x) => x.tok);
     const vs = titleVariantTexts(correct);
     if (vs.length) correct = vs.reduce((best, v) => (titleScore(a, v) > titleScore(a, best) ? v : best), vs[0]);
+    // zaliczony tylko fragment tytułu (np. sam polski tytuł) – pokażemy pełny tytuł
+    partial = vs.length > 1 && correct !== vs[0] && checkTitle(answer, full);
   }
   const C = wordTokens(correct, { roman, keys });
   if (!C.length) return A.length ? [{ kind: 'nopart' }] : [];
@@ -476,6 +480,11 @@ export function explainField(field, answer, correct) {
     const have = new Set([...A, ...C].map((x) => x.tok));
     for (const k of wordTokens(full, { keys: true })) {
       if (isKey(k.tok) && !have.has(k.tok)) { have.add(k.tok); out.push({ kind: 'keymissing', fix: k.word }); }
+    }
+    if (partial) {
+      // cudzysłów wewnątrz („''Na Boże Narodzenie''”) → «…», bo całość pokazujemy w „…”
+      const fix = String(full).replace(/(?:''|["“”„])\s*([^"“”„']+?)\s*(?:''|["“”„])/g, '«$1»').replace(/\s+/g, ' ').trim();
+      out.push({ kind: 'fulltitle', fix });
     }
   }
   return out;

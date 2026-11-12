@@ -676,6 +676,7 @@ function whyHtml(notes, ok, inline) {
     if (n.kind === 'wrong') return `<span class="err">„<s>${esc(n.given)}</s>”${n.fix ? ` → ${q(n.fix)}` : ' – nie pasuje'}${n.key ? ' (tonacja: wielka litera = dur, mała = moll)' : ''}</span>`;
     if (n.kind === 'missing') return `<span class="err">brakuje ${q(n.fix)}</span>`;
     if (n.kind === 'keymissing') return `<span class="typo">brakuje tonacji ${q(n.fix)}</span>`;
+    if (n.kind === 'fulltitle') return `<span class="typo">pełny tytuł to ${q(n.fix)}</span>`;
     if (n.kind === 'empty') return '<span class="err">brak odpowiedzi</span>';
     if (n.kind === 'nopart') return '<span class="err">ten utwór nie ma części – pole zostaw puste</span>';
     return '';

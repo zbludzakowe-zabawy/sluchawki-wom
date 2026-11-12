@@ -161,8 +161,9 @@ test('quiz tekstowy – tonacje: wielka litera = dur, mała = moll', () => {
   assert.deepEqual(explainField('title', 'Polonez op. 40 nr 1', t), [{ kind: 'missing', fix: 'A-dur' }]);
   assert.equal(checkTitle('Na Boże Narodzenie', 'Concerto Grosso g-moll „Na Boże Narodzenie” op. 6 nr 8'), true); // sam dopisek
   assert.deepEqual(explainField('title', 'Na Boże Narodzenie', 'Concerto Grosso g-moll „Na Boże Narodzenie” op. 6 nr 8'),
-    [{ kind: 'keymissing', fix: 'g-moll' }]); // zaliczone, ale z przypomnieniem o tonacji
-  assert.deepEqual(explainField('title', 'Concerto grosso g op. 6 nr 8', 'Concerto Grosso g-moll „Na Boże Narodzenie” op. 6 nr 8'), []);
+    [{ kind: 'keymissing', fix: 'g-moll' }, { kind: 'fulltitle', fix: 'Concerto Grosso g-moll «Na Boże Narodzenie» op. 6 nr 8' }]); // zaliczone, ale z przypomnieniem
+  assert.deepEqual(explainField('title', 'Concerto grosso g op. 6 nr 8', 'Concerto Grosso g-moll „Na Boże Narodzenie” op. 6 nr 8'),
+    [{ kind: 'fulltitle', fix: 'Concerto Grosso g-moll «Na Boże Narodzenie» op. 6 nr 8' }]);
   assert.equal(checkPart('1', 'tom 1 - Preludium C-dur'), true); // sam numer części
   assert.equal(checkPart('Preludium', 'tom 1 - Preludium C-dur'), false);
   assert.equal(checkTitle('Polonez a op. 40 nr 1', t), false); // „a” = a-moll
@@ -178,6 +179,23 @@ test('quiz tekstowy – tonacje: wielka litera = dur, mała = moll', () => {
   assert.deepEqual(explainField('title', 'Polonez a op. 40 nr 1', t), [{ kind: 'wrong', given: 'a', fix: 'A-dur', key: true }]);
   assert.deepEqual(explainField('title', 'Polonez A op. 40 nr 1', t), []);
   assert.deepEqual(explainField('title', 'Polonez A dur op. 40 nr 1', t), []);
+});
+
+test('quiz tekstowy – tytuł po polsku i w oryginale', () => {
+  assert.equal(checkTitle('Król elfów', 'Erlkönig (Król elfów)'), true);
+  assert.equal(checkTitle('Kukułka', 'Le Coucou (Kukułka)'), true);
+  assert.equal(checkTitle('Le Coucou', 'Le Coucou (Kukułka)'), true);
+  assert.equal(checkTitle('Wełtawa', 'Die Moldau / Wełtawa'), true);
+  assert.equal(checkTitle('Die Moldau', 'Die Moldau / Wełtawa'), true);
+  assert.deepEqual(explainField('title', 'Król elfów', 'Erlkönig (Król elfów)'), [{ kind: 'fulltitle', fix: 'Erlkönig (Król elfów)' }]);
+  assert.deepEqual(explainField('title', 'Krol elfow', 'Erlkönig (Król elfów)'), [{ kind: 'fulltitle', fix: 'Erlkönig (Król elfów)' }]);
+  assert.deepEqual(explainField('title', 'Wełtawa', 'Die Moldau / Wełtawa'), [{ kind: 'fulltitle', fix: 'Die Moldau / Wełtawa' }]);
+  assert.deepEqual(explainField('title', 'Erlkönig (Król elfów)', 'Erlkönig (Król elfów)'), []);
+  assert.deepEqual(explainField('title', 'Erlkonig Krol elfow', 'Erlkönig (Król elfów)'), []);
+  assert.deepEqual(explainField('title', 'Halka', 'opera Halka'), []);
+  assert.deepEqual(explainField('title', 'Na Boże Narodzenie', "Concerto Grosso g-moll ''Na Boże Narodzenie'', op. 6 nr 8").at(-1),
+    { kind: 'fulltitle', fix: 'Concerto Grosso g-moll «Na Boże Narodzenie», op. 6 nr 8' });
+  assert.deepEqual(explainField('title', 'Król Lear', 'Erlkönig (Król elfów)').some((n) => n.kind === 'fulltitle'), false); // błąd – bez tej uwagi
 });
 
 test('shuffle zachowuje elementy', () => {
