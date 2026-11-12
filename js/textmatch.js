@@ -196,8 +196,25 @@ export function splitPart(title) {
   return { title: t, part: '' };
 }
 
-/** jedna linia → { author, title, part } albo null */
+// uwagi do utworu (np. dopisane na liście na czerwono) – w tekście listy jako „[uwagi: …]”;
+// nie są częścią tytułu ani fragmentu i nie biorą udziału w dopasowaniu ani w quizie
+const NOTE_RE = /\[\s*uwag[ai]\s*:\s*([^\]]*)\]?/gi;
+/** wydziela uwagi z linii: { text: linia bez uwag, note } */
+export function splitNote(line) {
+  const notes = [];
+  const text = String(line || '').replace(NOTE_RE, (m, n) => { if (clean(n)) notes.push(clean(n)); return ' '; });
+  return { text, note: notes.join('; ') };
+}
+
+/** jedna linia → { author, title, part[, note] } albo null */
 export function parseLine(line) {
+  const { text, note } = splitNote(line);
+  const p = parseCols(text);
+  if (p && note) p.note = note;
+  return p;
+}
+
+function parseCols(line) {
   let s = String(line || '').replace(/[“”„"]/g, '"').replace(/\s+$/, '');
   s = s.replace(/^\s*(\d{1,3}\s*[.)\]:]|[a-z]\))\s*/i, '').replace(/^\s*\d{1,3}\s+(?=\D)/, '');
   if (!clean(s) || clean(s).length < 3) return null;
@@ -247,10 +264,17 @@ export function parseList(text) {
   for (const [i, line] of lines.entries()) {
     if (!line.trim()) continue;
     if (numbered && i < firstNum) continue;
+    const prev = out[out.length - 1];
+    const { text: rest, note } = splitNote(line);
+    // linia z samymi uwagami – dopisujemy je do poprzedniego utworu
+    if (note && !clean(rest)) {
+      if (prev) prev.note = prev.note ? `${prev.note} ${note}` : note;
+      continue;
+    }
     const p = parseLine(line);
     if (!p) continue;
-    const prev = out[out.length - 1];
     if (prev && !p.author && /^[a-ząćęłńóśźż(]/.test(line.trim())) {
+      if (p.note) prev.note = prev.note ? `${prev.note} ${p.note}` : p.note;
       if (p.part && !prev.part) { prev.title = clean(prev.title + ' ' + p.title); prev.part = p.part; }
       else if (p.title) {
         const sp = splitPart(prev.title + ' ' + p.title + (p.part ? ' ' + p.part : ''));

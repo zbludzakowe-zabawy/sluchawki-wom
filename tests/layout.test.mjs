@@ -44,3 +44,26 @@ test('odczytana lista dopasowuje się do plików 1:1 (mimo literówek OCR)', () 
   assert.deepEqual(result.map((r) => r.fileId), FILES.map((f) => f.id));
   for (const r of result) assert.ok(r.score >= 0.5, `${r.fileId} ${r.score}`);
 });
+
+test('słowa w innym kolorze (uwagi) nie trafiają do tytułu ani części', () => {
+  const words = JSON.parse(JSON.stringify(ocr.words));
+  const add = (after, texts) => {
+    let x = after.x1;
+    const h = after.y1 - after.y0;
+    for (const text of texts) {
+      words.push({ text, conf: 90, x0: x + h * 0.4, x1: x + h * 0.4 + text.length * h * 0.45, y0: after.y0, y1: after.y1, note: true });
+      x += h * 0.4 + text.length * h * 0.45;
+    }
+  };
+  // czerwony dopisek w kolumnie Tytuł, w tej samej linii co tytuł (Chopin, Życzenie)
+  add(words.find((w) => /yczenie/.test(w.text)), ['nieobowiązkowe']);
+  // i w zawiniętej, drugiej linii komórki (Prokofiew, „…pomarańczy”)
+  add(words.find((w) => /pomara/.test(w.text)), ['tylko', 'początek']);
+  const text = layoutText({ ...ocr, words });
+  assert.match(text, /\[uwagi: tylko początek\]/);
+  const list = parseList(text);
+  assert.equal(list.length, 15);
+  assert.deepEqual(list[6], { author: 'Fryderyk Chopin', title: 'Życzenie', part: '', note: 'nieobowiązkowe' });
+  assert.deepEqual(list[11], { author: 'Siergiej Prokofiew', title: 'opera Miłość do trzech pomarańczy', part: 'Marsz', note: 'tylko początek' });
+  assert.equal(list.filter((t) => t.note).length, 2);
+});

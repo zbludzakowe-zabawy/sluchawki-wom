@@ -248,3 +248,12 @@ test('shuffle zachowuje elementy', () => {
   const a = [1, 2, 3, 4, 5, 6];
   assert.deepEqual(shuffle(a).sort(), a);
 });
+
+test('parseList – uwagi w nawiasie [uwagi: …] są osobnym polem', () => {
+  const list = parseList('1.\tChopin\tMazurek a-moll op. 68 nr 2\t\t[uwagi: nagranie bez repetycji]\n2. Bach – Suita nr 3, cz. II Air [uwaga: tylko temat]\n   [uwagi: do poprawki]\n');
+  assert.equal(list.length, 2);
+  assert.deepEqual(list[0], { author: 'Chopin', title: 'Mazurek a-moll op. 68 nr 2', part: '', note: 'nagranie bez repetycji' });
+  assert.equal(list[1].part, 'cz. II Air');
+  assert.equal(list[1].note, 'tylko temat do poprawki');
+  assert.deepEqual(parseLine('Bach – Suita nr 3'), { author: 'Bach', title: 'Suita nr 3', part: '' });
+});

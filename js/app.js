@@ -18,6 +18,8 @@ const fmtDate = (t) => new Date(t).toLocaleString('pl-PL', { day: 'numeric', mon
 const pl = (n, one, few, many) => `${n} ${n === 1 ? one : (n % 10 >= 2 && n % 10 <= 4 && (n % 100 < 10 || n % 100 >= 20)) ? few : many}`;
 const utwory = (n) => pl(n, 'utwór', 'utwory', 'utworów');
 export const trackLabel = (t) => `${t.author ? t.author + ' – ' : ''}${t.title || '(bez tytułu)'}${t.part ? ', ' + t.part : ''}`;
+/** uwagi do utworu (np. czerwony dopisek na liście) – osobno, nie są częścią opisu utworu */
+const noteHtml = (t, tag = 'small') => (t && t.note ? `<${tag} class="note">Uwagi: ${esc(t.note)}</${tag}>` : '');
 
 const ls = {
   get(k, d) { try { const v = localStorage.getItem(k); return v ? JSON.parse(v) : d; } catch { return d; } },
@@ -231,7 +233,7 @@ async function setView(id) {
       <div id="off-progress" hidden><div class="bar"><i></i></div><p class="muted" id="off-status"></p><button class="btn" id="off-cancel">Przerwij</button></div>
     </div>
     ${n ? `<details class="card tracks-box"><summary>Utwory w zbiorze (${n})</summary><ol class="track-list">${set.tracks.map((t) =>
-      `<li>${esc(trackLabel(t))}${downloaded.has(t.fileId) ? ' <span class="dl" title="pobrany">⇩</span>' : ''}</li>`).join('')}</ol>
+      `<li>${esc(trackLabel(t))}${downloaded.has(t.fileId) ? ' <span class="dl" title="pobrany">⇩</span>' : ''}${noteHtml(t)}</li>`).join('')}</ol>
       ${locked ? '' : `<a class="btn wide" href="#/edytuj/${esc(id)}">✎ Edytuj utwory i kolejność</a>`}</details>` : ''}
     <h2 class="sec-title">Eksport i udostępnianie</h2>
     <div class="grid2">
@@ -434,7 +436,7 @@ async function playerView() {
   render(`
     <div class="player card">
       <div class="now"><div class="disc" aria-hidden="true">♫</div>
-        <div><div class="now-author" id="p-author"></div><div class="now-title" id="p-title"></div><div class="muted" id="p-pos"></div></div></div>
+        <div><div class="now-author" id="p-author"></div><div class="now-title" id="p-title"></div><div class="note" id="p-note" hidden></div><div class="muted" id="p-pos"></div></div></div>
       <input type="range" id="p-seek" min="0" max="1000" value="0" aria-label="Pozycja">
       <div class="times"><span id="p-cur">0:00</span><span id="p-dur">0:00</span></div>
       <div class="controls">
@@ -465,6 +467,8 @@ function renderPlayerState() {
   if (!t) return;
   $('#p-author').textContent = t.author || '';
   $('#p-title').textContent = t.title + (t.part ? `, ${t.part}` : '');
+  $('#p-note').hidden = !t.note;
+  $('#p-note').textContent = t.note ? `Uwagi: ${t.note}` : '';
   $('#p-pos').textContent = `${player.index + 1} / ${player.queue.length}`;
   const playing = owner === 'player' && !audio.paused;
   $('#p-play').textContent = playing ? '⏸' : '▶';
@@ -561,7 +565,7 @@ function renderQuestion(autoplay) {
   }
   const fb = answered ? `<div class="feedback ${answered.ok ? 'good' : 'bad'}">
       <strong>${answered.ok ? 'Brawo! +1 punkt' : 'Niestety nie.'}</strong>
-      <span>To był: ${esc(trackLabel(t))}</span></div>
+      <span>To był: ${esc(trackLabel(t))}</span>${noteHtml(t, 'span')}</div>
       <button class="btn primary wide" id="q-next">${quiz.idx + 1 < n ? 'Dalej ›' : 'Zobacz wynik'}</button>` : '';
   render(`
     <div class="quiz-top">
@@ -800,6 +804,7 @@ function renderTable(root, model, onChange) {
         <input data-f="author" placeholder="Autor" value="${esc(r.author)}" aria-label="Autor">
         <input data-f="title" placeholder="Tytuł" value="${esc(r.title)}" aria-label="Tytuł">
         <input data-f="part" placeholder="Część / fragment (jeśli jest)" value="${esc(r.part)}" aria-label="Część lub fragment">
+        <input data-f="note" class="note-input" placeholder="Uwagi (jeśli są)" value="${esc(r.note || '')}" aria-label="Uwagi">
         <div class="tfile">
           <select data-f="fileId" aria-label="Plik nagrania"><option value="">— brak pliku —</option>${opts}</select>
           <button type="button" class="round sm" data-act="listen" aria-label="Posłuchaj" ${r.fileId ? '' : 'disabled'}>▶</button>
@@ -842,7 +847,7 @@ function renderTable(root, model, onChange) {
       r.score = f ? matchScore(r, f.name) : 0;
       return rerender();
     }
-    if (el.dataset.f && !r.manual) {
+    if (el.dataset.f && el.dataset.f !== 'note' && !r.manual) {
       // opis poprawiony – poszukaj lepszego pliku wśród wolnych
       const taken = new Set(model.rows.filter((x) => x !== r && x.fileId).map((x) => x.fileId));
       const best = rowRanking(model, r).find(({ f }) => !taken.has(f.id));
@@ -929,7 +934,7 @@ async function addView(setId) {
     </section>
     <section class="card step">
       <h2><span class="stepn">2</span> Lista utworów</h2>
-      <p class="muted">Wybierz zdjęcie lub skan listy (albo PDF). Aplikacja odczyta tekst – potem możesz go poprawić. Możesz też wkleić listę: jeden utwór w linii, np. <i>J.S. Bach – Koncert brandenburski nr 3, cz. I</i>.</p>
+      <p class="muted">Wybierz zdjęcie lub skan listy (albo PDF). Aplikacja odczyta tekst – potem możesz go poprawić. Możesz też wkleić listę: jeden utwór w linii, np. <i>J.S. Bach – Koncert brandenburski nr 3, cz. I</i>. Tekst w innym kolorze (np. czerwone uwagi) trafia do <i>[uwagi: …]</i> – nie jest częścią tytułu ani fragmentu.</p>
       <label class="btn primary wide">📷 Wybierz zdjęcie / plik listy<input type="file" id="list-file" accept="image/*,application/pdf,.pdf,.txt" multiple hidden></label>
       <div id="ocr-status" class="muted" hidden></div>
       <div id="thumbs" class="thumbs"></div>
@@ -1092,7 +1097,7 @@ async function addView(setId) {
     const byId = new Map(model.files.map((f) => [f.id, f]));
     for (const r of withFile) {
       const f = byId.get(r.fileId) || {};
-      set.tracks.push({ id: uid(), author: r.author.trim(), title: r.title.trim(), part: (r.part || '').trim(), fileId: r.fileId, fileName: f.name || '', size: f.size || 0, mimeType: f.mimeType || '', resourceKey: f.resourceKey || '' });
+      set.tracks.push({ id: uid(), author: r.author.trim(), title: r.title.trim(), part: (r.part || '').trim(), ...noteOf(r), fileId: r.fileId, fileName: f.name || '', size: f.size || 0, mimeType: f.mimeType || '', resourceKey: f.resourceKey || '' });
     }
     const fileIds = new Set(set.files.map((f) => f.id));
     for (const f of model.files) if (!fileIds.has(f.id)) set.files.push(f);
@@ -1116,7 +1121,7 @@ async function editView(id) {
   }
   setHeader('Edycja zbioru', `#/zbior/${id}`);
   const model = {
-    rows: set.tracks.map((t) => ({ key: t.id, id: t.id, author: t.author, title: t.title, part: t.part, fileId: t.fileId, score: 1, manual: true })),
+    rows: set.tracks.map((t) => ({ key: t.id, id: t.id, author: t.author, title: t.title, part: t.part, note: t.note || '', fileId: t.fileId, score: 1, manual: true })),
     files: set.files.slice(),
     blocked: new Set(),
   };
@@ -1181,7 +1186,7 @@ async function editView(id) {
     set.name = name;
     set.tracks = rows.filter((r) => r.fileId).map((r) => {
       const f = byId.get(r.fileId) || {};
-      return { id: r.id || uid(), author: r.author.trim(), title: r.title.trim(), part: (r.part || '').trim(), fileId: r.fileId, fileName: f.name || '', size: f.size || 0, mimeType: f.mimeType || '', resourceKey: f.resourceKey || '' };
+      return { id: r.id || uid(), author: r.author.trim(), title: r.title.trim(), part: (r.part || '').trim(), ...noteOf(r), fileId: r.fileId, fileName: f.name || '', size: f.size || 0, mimeType: f.mimeType || '', resourceKey: f.resourceKey || '' };
     });
     set.files = model.files;
     await db.putSet(set);
@@ -1242,10 +1247,16 @@ async function settingsView() {
 }
 
 // ---------- udostępnianie, eksport, import ----------
+/** { note } tylko gdy uwagi są niepuste */
+function noteOf(r) {
+  const n = typeof r.note === 'string' ? r.note.trim() : '';
+  return n ? { note: n } : {};
+}
 function packSet(set) {
   return {
     app: 'sluchawki', v: 1, id: set.id, name: set.name, folders: set.folders, exportedAt: Date.now(),
-    tracks: set.tracks.map((t) => [t.author, t.title, t.part, t.fileId, t.fileName, t.size, t.mimeType, t.resourceKey || '']),
+    // 9. pole (uwagi) tylko gdy są – starsze pliki i linki zostają bez zmian
+    tracks: set.tracks.map((t) => [t.author, t.title, t.part, t.fileId, t.fileName, t.size, t.mimeType, t.resourceKey || '', ...(t.note ? [t.note] : [])]),
   };
 }
 function unpackSet(d) {
@@ -1253,7 +1264,7 @@ function unpackSet(d) {
   return {
     id: typeof d.id === 'string' && /^[\w-]{4,80}$/.test(d.id) ? d.id : '',
     name: String(d.name || 'Zbiór'), folders: Array.isArray(d.folders) ? d.folders : [],
-    tracks: d.tracks.map((a) => ({ id: uid(), author: a[0] || '', title: a[1] || '', part: a[2] || '', fileId: a[3], fileName: a[4] || '', size: a[5] || 0, mimeType: a[6] || '', resourceKey: a[7] || '' }))
+    tracks: d.tracks.map((a) => ({ id: uid(), author: a[0] || '', title: a[1] || '', part: a[2] || '', fileId: a[3], fileName: a[4] || '', size: a[5] || 0, mimeType: a[6] || '', resourceKey: a[7] || '', ...noteOf({ note: a[8] }) }))
       .filter((t) => typeof t.fileId === 'string' && t.fileId),
   };
 }

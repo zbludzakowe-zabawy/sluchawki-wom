@@ -33,17 +33,19 @@ Właścicielka pisze po polsku; cała aplikacja, komunikaty, commity i opisy PR 
 Publikacja: `.github/workflows/pages.yml` (push do `main`) → testy → kopiuje pliki do `_site` (+ `zbiory/*.json`) → `build-library` → `build-sw` → Pages.
 
 ## Model danych
-Zbiór (`sets`): `{ id, name, createdAt, updatedAt, folders:[{id,resourceKey,name}], files:[{id,name,size,mimeType,resourceKey}], tracks:[{id, author, title, part, fileId, fileName, size, mimeType, resourceKey}], lib? }`
+Zbiór (`sets`): `{ id, name, createdAt, updatedAt, folders:[{id,resourceKey,name}], files:[{id,name,size,mimeType,resourceKey}], tracks:[{id, author, title, part, note?, fileId, fileName, size, mimeType, resourceKey}], lib? }`
+- `note` – uwagi do utworu (np. czerwony dopisek na liście); nigdy nie jest częścią tytułu ani fragmentu, nie bierze udziału w dopasowaniu plików ani w sprawdzaniu quizu; pokazywane na liście, w odtwarzaczu i w quizie po odpowiedzi.
 - `tracks` – kolejność = kolejność „po kolei”. `files` – wszystkie pliki audio z folderów (do zmiany przypisania w edytorze).
 - `lib: { file, hash }` – zbiór dodany z biblioteki → **tylko do odczytu** (🔒). Edycja i dopisywanie utworów zablokowane; „⧉ Własna kopia” tworzy zwykły zbiór „… (moja kopia)”. Zmienia go tylko „↻ Aktualizuj” (gdy `hash` w `zbiory/index.json` się zmieni). Import pliku nie nadpisuje zbioru z `lib`.
 
-Format pliku/eksportu (`packSet`): `{ app:'sluchawki', v:1, id, name, folders, exportedAt, tracks:[[author, title, part, fileId, fileName, size, mimeType, resourceKey], …] }`.
+Format pliku/eksportu (`packSet`): `{ app:'sluchawki', v:1, id, name, folders, exportedAt, tracks:[[author, title, part, fileId, fileName, size, mimeType, resourceKey, note?], …] }` – 9. pole tylko, gdy są uwagi.
 Eksport wszystkich: `{ app:'sluchawki', v:1, sets:[…] }`. Import rozpoznaje zbiór po `id`, potem po nazwie (zastąp / zapisz osobno).
 Link „Udostępnij”: `#/import/` + `z` + base64url(deflate-raw(JSON)) (albo `j` + base64url(JSON) bez kompresji).
 
 Stan w localStorage: `sluchawki-prefs` (liczba pytań `count`: '75' / 'all' / '150' – `questionCount`; przy 150% `spreadOrder` – połowa utworów drugi raz, nigdy raz za razem; `fragment`: 0 = cały utwór), `sluchawki-player`, `sluchawki-quiz` (wznawianie quizu), `sluchawki-draft` (szkic dodawania), `sluchawki-last-result`, `sluchawki-api-key` (własny klucz – nadpisuje config).
 
 ## Najważniejsze zachowania
+- **Uwagi z obrazu**: `prepare()` zachowuje kolory, `markNotes()` w `js/ocr.js` oznacza słowa w innym kolorze niż większość tekstu (`note: true`, kolor ze środka kresek, bez dolnego skraju – czerwone podkreślenia korekty pisowni nie liczą się); `layoutText` daje je jako `\t[uwagi: …]`, `parseList` wydziela `[uwagi: …]` / `[uwaga: …]` do `note`.
 - **Dodawanie**: nazwa zbioru (nowy / istniejący, ale nie z biblioteki) → lista ze zdjęcia/PDF/tekstu (`readFileText` → `layoutText` → edytowalny tekst → `parseList`) → link do folderu Dysku → automatyczne dopasowanie (`matchAll`, zachłannie, próg `MATCH_MIN` 0.35; kolory: ≥0.7 pewne, ≥0.5 sprawdź) → ręczne poprawki → „Zatwierdź”.
 - **Nazwy plików na Dysku** mają format `Autor - Tytuł - Część.mp3`, np. `Arcangelo Corelli - Concerto Grosso g-moll ''Na Boże Narodzenie'', op. 6 nr 8 - cz. 5. Pastorale.mp3`.
 - **Nauka**: po kolei, losowo (inna kolejność niż ostatnio – `freshShuffle`), według autora (`groupAuthors` po nazwisku).

@@ -1,7 +1,9 @@
 // Słuchawki – składanie tekstu z OCR według położenia słów.
 // Dla tabel (nagłówek „Autor / Tytuł / Część”) słowa trafiają do kolumn według położenia,
 // a komórki zawinięte do następnej linii (bez numeru L.p.) są doklejane do swojego wiersza.
-// Wynik: linie „1.<TAB>autor<TAB>tytuł<TAB>część”, które rozumie parseList().
+// Słowa oznaczone przez OCR jako napisane innym kolorem (w.note – np. czerwone uwagi nauczyciela)
+// nie należą do tytułu ani części – trafiają do uwag.
+// Wynik: linie „1.<TAB>autor<TAB>tytuł<TAB>część[<TAB>[uwagi: …]]”, które rozumie parseList().
 
 const median = (a) => {
   if (!a.length) return 0;
@@ -90,23 +92,24 @@ export function layoutText(r) {
   const pre = lines.slice(0, hi).map((l) => plainLine(l, h));
   const rows = [];
   for (const l of lines.slice(hi + 1)) {
-    const cell = { lp: [], author: [], title: [], part: [] };
-    for (const w of l.words) cell[colOf(w)].push(w);
+    const cell = { lp: [], author: [], title: [], part: [], note: [] };
+    for (const w of l.words) cell[w.note ? 'note' : colOf(w)].push(w);
     const num = cell.lp.length && /^\d{1,3}[.)]?$/.test(cell.lp.map((w) => w.text).join(''));
     // numer bez kolumny L.p. przyklejony do autora
     if (!num && !cell.lp.length && cell.author.length && /^\d{1,3}[.)]$/.test(cell.author[0].text)) cell.lp.push(cell.author.shift());
     const isNew = num || cell.lp.length || !rows.length || (!lp && cell.author.length && cell.title.length);
-    if (isNew) rows.push({ lp: cell.lp, author: cell.author, title: cell.title, part: cell.part });
+    if (isNew) rows.push({ lp: cell.lp, author: cell.author, title: cell.title, part: cell.part, note: cell.note });
     else {
       const last = rows[rows.length - 1];
-      for (const k of ['author', 'title', 'part']) last[k].push(...cell[k]);
+      for (const k of ['author', 'title', 'part', 'note']) last[k].push(...cell[k]);
     }
   }
   const body = rows
     .filter((r) => r.author.length || r.title.length)
     .map((r, i) => {
       const n = r.lp.length ? r.lp.map((w) => w.text).join('').replace(/[^\d]/g, '') || String(i + 1) : String(i + 1);
-      return `${n}.\t${joinWords(r.author)}\t${joinWords(r.title)}\t${joinWords(r.part)}`;
+      const note = joinWords(r.note).replace(/[[\]]/g, '');
+      return `${n}.\t${joinWords(r.author)}\t${joinWords(r.title)}\t${joinWords(r.part)}${note ? `\t[uwagi: ${note}]` : ''}`;
     });
   return [...pre, ...body].join('\n');
 }

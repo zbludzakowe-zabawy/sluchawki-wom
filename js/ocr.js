@@ -62,6 +62,7 @@ async function prepare(source) {
   g.drawImage(img, 0, 0, W, H);
   const d = g.getImageData(0, 0, W, H);
   const p = d.data;
+  const orig = new Uint8ClampedArray(p); // kolory – do rozpoznania uwag pisanych innym kolorem
   // odcienie szarości + obraz całkowy do progowania lokalnego (nierówne oświetlenie zdjęcia)
   const gray = new Float32Array(W * H);
   const integ = new Float64Array((W + 1) * (H + 1));
@@ -159,13 +160,64 @@ async function prepare(source) {
       for (let x = Math.max(0, (x0 - 1) * cs); x < Math.min(W, (x1 + 2) * cs); x++) erase[y * W + x] = 1;
     }
   }
+  const ink = new Uint8Array(W * H);
   for (let i = 0; i < W * H; i++) {
-    const v = dark[i] && !erase[i] ? 0 : 255;
+    ink[i] = dark[i] && !erase[i] ? 1 : 0;
+    const v = ink[i] ? 0 : 255;
     p[i * 4] = p[i * 4 + 1] = p[i * 4 + 2] = v;
     p[i * 4 + 3] = 255;
   }
   g.putImageData(d, 0, 0);
+  c.colors = { orig, ink };
   return c;
+}
+
+/** kolor tekstu słowa: 'k' (czarny/szary) albo odcień ('h0' = czerwony, 'h1' = żółty, … 'h4' = niebieski) */
+function wordColor(colors, W, H, b) {
+  const { orig, ink } = colors;
+  const x0 = Math.max(0, Math.floor(b.x0));
+  const x1 = Math.min(W, Math.ceil(b.x1));
+  const y0 = Math.max(0, Math.floor(b.y0));
+  // dolny skraj pomijamy – tam bywa czerwone falowane podkreślenie z korekty pisowni
+  const y1 = Math.min(H, Math.ceil(b.y1 - (b.y1 - b.y0) * 0.2));
+  const px = [];
+  for (let y = y0; y < y1; y++) {
+    for (let x = x0; x < x1; x++) {
+      const i = y * W + x;
+      if (!ink[i]) continue;
+      const r = orig[i * 4];
+      const g = orig[i * 4 + 1];
+      const bl = orig[i * 4 + 2];
+      px.push([0.299 * r + 0.587 * g + 0.114 * bl, r, g, bl]);
+    }
+  }
+  if (px.length < 8) return 'k';
+  // środek kresek (najciemniejsza połowa) – brzegi liter mieszają się z kolorem tła komórki
+  px.sort((a, c) => a[0] - c[0]);
+  const core = px.slice(0, Math.ceil(px.length / 2));
+  let r = 0; let g = 0; let bl = 0;
+  for (const q of core) { r += q[1]; g += q[2]; bl += q[3]; }
+  r /= core.length; g /= core.length; bl /= core.length;
+  const mx = Math.max(r, g, bl);
+  const mn = Math.min(r, g, bl);
+  if (mx - mn < 50 || (mx - mn) / mx < 0.35) return 'k';
+  let hue;
+  if (mx === r) hue = ((g - bl) / (mx - mn) + 6) % 6;
+  else if (mx === g) hue = (bl - r) / (mx - mn) + 2;
+  else hue = (r - g) / (mx - mn) + 4;
+  return 'h' + (Math.floor((hue * 60 + 30) / 60) % 6);
+}
+
+/** słowa napisane innym kolorem niż większość tekstu (np. czerwone uwagi) → note: true */
+function markNotes(words, colors, W, H) {
+  if (!colors || !words.length) return;
+  const count = {};
+  for (const w of words) {
+    w.color = wordColor(colors, W, H, w);
+    count[w.color] = (count[w.color] || 0) + 1;
+  }
+  const base = Object.keys(count).sort((a, b) => count[b] - count[a])[0];
+  for (const w of words) if (w.color !== base && w.color !== 'k') w.note = true;
 }
 
 async function ocrCanvas(canvas, onStatus, label) {
@@ -180,6 +232,7 @@ async function ocrCanvas(canvas, onStatus, label) {
   for (const b of data.blocks || []) for (const p of b.paragraphs || []) for (const l of p.lines || []) for (const wd of l.words || []) {
     words.push({ text: wd.text, conf: Math.round(wd.confidence), x0: wd.bbox.x0, y0: wd.bbox.y0, x1: wd.bbox.x1, y1: wd.bbox.y1 });
   }
+  markNotes(words, canvas.colors, canvas.width, canvas.height);
   return { text: data.text, words, width: canvas.width, height: canvas.height };
 }
 
