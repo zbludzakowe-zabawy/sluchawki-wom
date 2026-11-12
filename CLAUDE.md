@@ -28,6 +28,7 @@ Właścicielka pisze po polsku; cała aplikacja, komunikaty, commity i opisy PR 
 | `tools/make-icons.cjs` | ikony PNG z `icons/icon.svg` (Playwright) |
 | `zbiory/*.json` | biblioteka zbiorów wbudowanych – widoczna dla wszystkich |
 | `przyklady/kanon-2.1.png` | wzorcowa lista utworów (zrzut tabeli z Worda) – tak wyglądają listy do odczytu |
+| `przyklady/kanon-3.1.jpg` | lista z czerwonymi uwagami w kolumnie „Część/fragment” (fixture `kanon-3.1-ocr.json`) |
 | `tests/` | `node --test`; `fixtures/kanon-2.1-ocr.json` = słowa z OCR wzorcowej listy |
 
 Publikacja: `.github/workflows/pages.yml` (push do `main`) → testy → kopiuje pliki do `_site` (+ `zbiory/*.json`) → `build-library` → `build-sw` → Pages.
@@ -45,7 +46,7 @@ Link „Udostępnij”: `#/import/` + `z` + base64url(deflate-raw(JSON)) (albo `
 Stan w localStorage: `sluchawki-prefs` (liczba pytań `count`: '75' / 'all' / '150' – `questionCount`; przy 150% `spreadOrder` – połowa utworów drugi raz, nigdy raz za razem; `fragment`: 0 = cały utwór), `sluchawki-player`, `sluchawki-quiz` (wznawianie quizu), `sluchawki-draft` (szkic dodawania), `sluchawki-last-result`, `sluchawki-api-key` (własny klucz – nadpisuje config).
 
 ## Najważniejsze zachowania
-- **Uwagi z obrazu**: `prepare()` zachowuje kolory, `markNotes()` w `js/ocr.js` oznacza słowa w innym kolorze niż większość tekstu (`note: true`, kolor ze środka kresek, bez dolnego skraju – czerwone podkreślenia korekty pisowni nie liczą się); `layoutText` daje je jako `\t[uwagi: …]`, `parseList` wydziela `[uwagi: …]` / `[uwaga: …]` do `note`.
+- **Uwagi z obrazu**: `prepare()` zachowuje kolory, `markNotes()` w `js/ocr.js` oznacza słowa w innym kolorze niż większość tekstu (`note: true`, kolor ze środka kresek, bez dolnego skraju – czerwone podkreślenia korekty pisowni nie liczą się; kolor równy kolorowi tła komórki, np. czarny tekst w niebieskim nagłówku z JPG, też nie); `layoutText` daje je jako `\t[uwagi: …]`, `parseList` wydziela `[uwagi: …]` / `[uwaga: …]` do `note`.
 - **Dodawanie**: nazwa zbioru (nowy / istniejący, ale nie z biblioteki) → lista ze zdjęcia/PDF/tekstu (`readFileText` → `layoutText` → edytowalny tekst → `parseList`) → link do folderu Dysku → automatyczne dopasowanie (`matchAll`, zachłannie, próg `MATCH_MIN` 0.35; kolory: ≥0.7 pewne, ≥0.5 sprawdź) → ręczne poprawki → „Zatwierdź”.
 - **Nazwy plików na Dysku** mają format `Autor - Tytuł - Część.mp3`, np. `Arcangelo Corelli - Concerto Grosso g-moll ''Na Boże Narodzenie'', op. 6 nr 8 - cz. 5. Pastorale.mp3`.
 - **Nauka**: po kolei, losowo (inna kolejność niż ostatnio – `freshShuffle`), według autora (`groupAuthors` po nazwisku).

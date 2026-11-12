@@ -181,26 +181,41 @@ function wordColor(colors, W, H, b) {
   // dolny skraj pomijamy – tam bywa czerwone falowane podkreślenie z korekty pisowni
   const y1 = Math.min(H, Math.ceil(b.y1 - (b.y1 - b.y0) * 0.2));
   const px = [];
+  const bg = [];
   for (let y = y0; y < y1; y++) {
     for (let x = x0; x < x1; x++) {
       const i = y * W + x;
-      if (!ink[i]) continue;
       const r = orig[i * 4];
       const g = orig[i * 4 + 1];
       const bl = orig[i * 4 + 2];
-      px.push([0.299 * r + 0.587 * g + 0.114 * bl, r, g, bl]);
+      const q = [0.299 * r + 0.587 * g + 0.114 * bl, r, g, bl];
+      if (ink[i]) px.push(q); else bg.push(q);
     }
   }
   if (px.length < 8) return 'k';
+  // czarny tekst na kolorowym tle (np. niebieski nagłówek tabeli) przejmuje kolor tła – to nie jest kolorowy tekst
+  // tło: najjaśniejsza połowa pikseli poza literami (jasne brzegi liter to nie tło)
+  bg.sort((a, c) => c[0] - a[0]);
+  const bgAvg = avgColor(bg.slice(0, Math.ceil(bg.length / 2)));
+  const bgHue = bgAvg ? hueClass(...bgAvg, 25, 0.15) : 'k';
   // środek kresek (najciemniejsza połowa) – brzegi liter mieszają się z kolorem tła komórki
   px.sort((a, c) => a[0] - c[0]);
-  const core = px.slice(0, Math.ceil(px.length / 2));
+  const c = hueClass(...avgColor(px.slice(0, Math.ceil(px.length / 2))), 50);
+  return c === bgHue ? 'k' : c;
+}
+
+function avgColor(qs) {
+  if (!qs.length) return null;
   let r = 0; let g = 0; let bl = 0;
-  for (const q of core) { r += q[1]; g += q[2]; bl += q[3]; }
-  r /= core.length; g /= core.length; bl /= core.length;
+  for (const q of qs) { r += q[1]; g += q[2]; bl += q[3]; }
+  return [r / qs.length, g / qs.length, bl / qs.length];
+}
+
+/** 'k' (bez wyraźnego koloru) albo odcień 'h0'…'h5' (h0 = czerwony, h4 = niebieski) */
+function hueClass(r, g, bl, minChroma, minRatio = 0.35) {
   const mx = Math.max(r, g, bl);
   const mn = Math.min(r, g, bl);
-  if (mx - mn < 50 || (mx - mn) / mx < 0.35) return 'k';
+  if (mx - mn < minChroma || (mx - mn) / mx < minRatio) return 'k';
   let hue;
   if (mx === r) hue = ((g - bl) / (mx - mn) + 6) % 6;
   else if (mx === g) hue = (bl - r) / (mx - mn) + 2;
