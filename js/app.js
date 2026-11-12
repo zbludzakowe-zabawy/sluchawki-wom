@@ -196,6 +196,7 @@ async function setView(id) {
   const have = set.tracks.filter(isDownloaded).length;
   const size = set.tracks.flatMap(trackFiles).reduce((s, f) => s + (f.size || 0), 0);
   const authors = groupAuthors(set.tracks);
+  const nq = questionKeys(set).length; // pytań w quizie (utwór z kilku plików = kilka pytań)
   const results = (await db.resultsFor(id).catch(() => [])).sort((a, b) => b.date - a.date).slice(0, 5);
   const locked = !!set.lib;
   render(`
@@ -221,7 +222,7 @@ async function setView(id) {
     </div>
     <div class="opts">
       <label>Pytań: <select id="q-count">
-        ${['75', 'all', '150'].map((v) => `<option value="${v}" ${prefs.count === v ? 'selected' : ''}>${{ 75: `ok. 75% (${questionCount('75', n)})`, all: `wszystkie (${n})`, 150: `150% (${questionCount('150', n)}) – niektóre 2 razy` }[v]}</option>`).join('')}
+        ${['75', 'all', '150'].map((v) => `<option value="${v}" ${prefs.count === v ? 'selected' : ''}>${{ 75: `ok. 75% (${questionCount('75', nq)})`, all: `wszystkie (${nq})`, 150: `150% (${questionCount('150', nq)}) – niektóre 2 razy` }[v]}</option>`).join('')}
       </select></label>
       <label>Odtwarzaj: <select id="q-frag">
         ${[0, 15, 30, 60].map((v) => `<option value="${v}" ${prefs.fragment === v ? 'selected' : ''}>${v ? `pierwsze ${v} s` : 'cały utwór'}</option>`).join('')}
@@ -422,12 +423,7 @@ function step(d) {
 
 audio.addEventListener('ended', () => {
   if (owner === 'player') step(1);
-  else if (owner === 'quiz') {
-    // cały utwór z kilku plików – po pierwszym od razu następny
-    const t = quizTrack();
-    if (t && !quiz.fragment && quizFrag + 1 < trackFiles(t).length) playFragment(quizFrag + 1);
-    else updateFragUi();
-  }
+  else if (owner === 'quiz') updateFragUi();
 });
 
 function setMediaSession(t) {
@@ -533,11 +529,14 @@ $('#mini-open').addEventListener('click', () => go('#/sluchaj'));
 let quiz = ls.get(K.quiz, null);
 let quizSet = null;
 const saveQuiz = () => ls.set(K.quiz, quiz);
+/** pytania quizu: utwór z kilku plików = kilka pytań („id”, „id#2”, …) – każdy plik jest puszczany */
+const questionKeys = (set) => set.tracks.flatMap((t) => trackFiles(t).map((f, k) => (k ? `${t.id}#${k + 1}` : t.id)));
+const splitKey = (key) => { const m = String(key).match(/^(.*)#(\d+)$/); return m ? { id: m[1], frag: Number(m[2]) - 1 } : { id: key, frag: 0 }; };
 
 function startQuiz(set, type, ids) {
   if (!set.tracks.length) return toast('Ten zbiór jest pusty.');
   if (type === 'choice' && set.tracks.length < 2) return toast('Do quizu wyboru potrzeba co najmniej 2 utworów.');
-  const all = set.tracks.map((t) => t.id);
+  const all = questionKeys(set);
   let order;
   if (ids) order = shuffle([...new Set(ids)]);
   else if (prefs.count === '150') order = spreadOrder(all, questionCount('150', all.length) - all.length);
@@ -549,7 +548,8 @@ function startQuiz(set, type, ids) {
   go('#/quiz');
 }
 
-const quizTrack = () => quizSet && quizSet.tracks.find((t) => t.id === quiz.order[quiz.idx]);
+const quizKey = () => quiz.order[quiz.idx];
+const quizTrack = () => quizSet && quizSet.tracks.find((t) => t.id === splitKey(quizKey()).id);
 
 async function quizView() {
   if (!quiz) return go('#/');
@@ -609,7 +609,7 @@ function renderQuestion(autoplay) {
     ${body}
     <button class="btn ghost wide" id="q-end">Zakończ quiz</button>
   `);
-  $('#q-restart').addEventListener('click', () => playFragment(0));
+  $('#q-restart').addEventListener('click', () => playFragment());
   $('#q-seek').addEventListener('input', (e) => {
     if (owner !== 'quiz' || !audio.duration) return;
     const max = quiz.fragment ? Math.min(quiz.fragment, audio.duration) : audio.duration;
@@ -647,23 +647,22 @@ function renderQuestion(autoplay) {
 }
 
 let quizLoaded = null; // id utworu załadowanego w odtwarzaczu quizu
-let quizFrag = 0; // który plik utworu (utwór z kilku plików)
-async function playFragment(frag = 0) {
+async function playFragment() {
   const t = quizTrack();
   if (!t) return;
-  quizFrag = Math.min(frag, trackFiles(t).length - 1);
+  const files = trackFiles(t);
+  const key = quizKey();
   try {
     $('#q-status').textContent = 'Ładowanie…';
-    const ok = await playTrack(trackFiles(t)[quizFrag], 'quiz');
-    quizLoaded = ok ? t.id : null;
+    const ok = await playTrack(files[Math.min(splitKey(key).frag, files.length - 1)], 'quiz');
+    quizLoaded = ok ? key : null;
   } catch (e) { toast(e.message, 'error'); quizLoaded = null; }
   updateFragUi();
 }
 function quizToggle() {
   const t = quizTrack();
-  if (owner === 'quiz' && t && quizLoaded === t.id && audio.src) {
+  if (owner === 'quiz' && t && quizLoaded === quizKey() && audio.src) {
     if (!audio.paused) { audio.pause(); return; }
-    if (audio.ended && quizFrag > 0) { playFragment(0); return; }
     const limit = quiz.fragment || Infinity;
     if (audio.ended || audio.currentTime >= limit) audio.currentTime = 0;
     audio.play().catch(() => undefined);
@@ -677,7 +676,7 @@ function quizTick() {
 function updateFragUi() {
   const seek = $('#q-seek');
   if (!seek || !quiz) return;
-  const mine = owner === 'quiz' && quizLoaded === (quizTrack() || {}).id;
+  const mine = owner === 'quiz' && !!quizTrack() && quizLoaded === quizKey();
   const dur = mine && Number.isFinite(audio.duration) ? audio.duration : 0;
   const max = quiz.fragment ? Math.min(quiz.fragment, dur || quiz.fragment) : dur;
   const cur = mine ? Math.min(audio.currentTime, max || 0) : 0;
@@ -688,11 +687,9 @@ function updateFragUi() {
   $('#q-play').setAttribute('aria-label', playing ? 'Pauza' : 'Odtwórz');
   $('#q-play').onclick = quizToggle;
   const done = mine && (audio.ended || (quiz.fragment && cur >= quiz.fragment));
-  const nf = trackFiles(quizTrack() || {}).length;
-  const fr = mine && nf > 1 && !quiz.fragment ? `Fragment ${quizFrag + 1} z ${nf} · ` : '';
   $('#q-status').textContent = !mine ? (quiz.fragment ? `Pierwsze ${quiz.fragment} s utworu` : 'Cały utwór – zatrzymaj, kiedy chcesz')
     : done ? 'Koniec – ▶ posłuchaj jeszcze raz'
-      : `${fr}${fmtT(cur)} / ${max ? fmtT(max) : '…'}${playing ? '' : ' · pauza'}`;
+      : `${fmtT(cur)} / ${max ? fmtT(max) : '…'}${playing ? '' : ' · pauza'}`;
 }
 audio.addEventListener('pause', () => { if (owner === 'quiz') updateFragUi(); });
 audio.addEventListener('play', () => { if (owner === 'quiz') updateFragUi(); });
@@ -701,7 +698,7 @@ function answerChoice(id) {
   const t = quizTrack();
   const chosen = quizSet.tracks.find((x) => x.id === id);
   const ok = id === t.id || (chosen && fold(trackLabel(chosen)) === fold(trackLabel(t)));
-  quiz.answers.push({ id: t.id, ok, given: id });
+  quiz.answers.push({ id: t.id, q: quizKey(), ok, given: id });
   quiz.phase = 'feedback';
   saveQuiz();
   renderQuestion(false);
@@ -731,7 +728,7 @@ function whyHtml(notes, ok, inline) {
 function answerText(given, skipped) {
   const t = quizTrack();
   const detail = skipped ? { author: false, title: false, part: false, ok: false } : checkAnswer(given, t);
-  quiz.answers.push({ id: t.id, ok: detail.ok, given, detail, ...(skipped ? { skipped: true } : {}) });
+  quiz.answers.push({ id: t.id, q: quizKey(), ok: detail.ok, given, detail, ...(skipped ? { skipped: true } : {}) });
   quiz.phase = 'feedback';
   saveQuiz();
   renderQuestion(false);
@@ -796,7 +793,7 @@ async function resultView() {
   if (pct >= 90 && resultFresh) setTimeout(() => confetti(), 150);
   resultFresh = false;
   const again = $('#r-again-bad');
-  if (again) again.addEventListener('click', () => startQuiz(set, res.type, bad.map((a) => a.id).filter((id) => byId(id))));
+  if (again) again.addEventListener('click', () => startQuiz(set, res.type, bad.filter((a) => byId(a.id)).map((a) => a.q || a.id)));
   $('#r-again').addEventListener('click', () => startQuiz(set, res.type));
 }
 
