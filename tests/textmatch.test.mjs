@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {
-  fold, tokens, parseLine, parseList, matchAll, matchScore, checkAnswer, checkAuthor, checkTitle, checkPart,
+  fold, tokens, parseLine, parseList, matchAll, matchScore, checkAnswer, checkAuthor, checkTitle, checkPart, explainField, answerSim,
   cleanFileName, trackFromFileName, shuffle,
 } from '../js/textmatch.js';
 
@@ -115,6 +115,40 @@ test('quiz tekstowy – sprawdzanie odpowiedzi', () => {
   assert.equal(checkTitle('Symfonia', 'Symfonia fantastyczna'), false);
   assert.equal(checkPart('1 allegro', 'cz. I Allegro'), true);
   assert.equal(checkPart('Mazur', 'Mazur'), true);
+});
+
+test('quiz tekstowy – literówki przechodzą, liczby muszą się zgadzać', () => {
+  assert.equal(checkAuthor('Chpoin', 'Fryderyk Chopin'), true); // zamienione litery
+  assert.equal(checkAuthor('Moniuszo', 'Stanisław Moniuszko'), true);
+  assert.equal(checkAuthor('Czajkowsky', 'Piotr Czajkowski'), true);
+  assert.equal(checkAuthor('Bahc', 'Johann Sebastian Bach'), true);
+  assert.equal(checkAuthor('Bach', 'Georg Friedrich Händel'), false);
+  assert.equal(checkAuthor('Mozart', 'Joseph Haydn'), false);
+  assert.equal(checkTitle('Strasny dwor', 'opera Straszny dwór'), true);
+  assert.equal(checkTitle('Konsert brandenburki nr 3', 'Koncert brandenburski nr 3'), true);
+  assert.equal(checkTitle('Konsert brandenburki nr 4', 'Koncert brandenburski nr 3'), false);
+  assert.equal(checkTitle('Serenada G-dur KV 526', 'Serenada G-dur KV525 „Eine Kleine Nachtmusik”'), false);
+  assert.equal(checkPart('cz. 1 Alegro', 'cz. I Allegro'), true);
+  assert.equal(answerSim('12', '13'), 0);
+});
+
+test('quiz tekstowy – pokazanie pomyłek', () => {
+  assert.deepEqual(explainField('author', 'Fryderyk Chpoin', 'Fryderyk Chopin'), [{ kind: 'typo', given: 'Chpoin', fix: 'Chopin' }]);
+  assert.deepEqual(explainField('author', 'F. Chopin', 'Fryderyk Chopin'), []);
+  assert.deepEqual(explainField('author', 'Fryderyk', 'Fryderyk Chopin'), [{ kind: 'missing', fix: 'Chopin' }]);
+  assert.deepEqual(explainField('title', 'Polnez A-dur op.40 nr 2', 'Polonez A-dur op. 40 nr 1'),
+    [{ kind: 'typo', given: 'Polnez', fix: 'Polonez' }, { kind: 'wrong', given: '2', fix: '1' }]);
+  assert.deepEqual(explainField('title', 'Koncert brandenburski', 'Koncert brandenburski nr 3'), [{ kind: 'missing', fix: '3' }]);
+  // porównanie z wariantem bez dopisku – nie wypisujemy „brakuje Na Boże Narodzenie”
+  assert.deepEqual(explainField('title', 'Concerto grosso g-moll op. 6 nr 9', "Concerto Grosso g-moll ''Na Boże Narodzenie'', op. 6 nr 8"),
+    [{ kind: 'wrong', given: '9', fix: '8' }]);
+  assert.deepEqual(explainField('title', 'Halka', 'opera Halka'), []);
+  assert.deepEqual(explainField('part', 'II Alegro', 'cz. I Allegro'),
+    [{ kind: 'wrong', given: 'II', fix: 'I' }, { kind: 'typo', given: 'Alegro', fix: 'Allegro' }]);
+  assert.deepEqual(explainField('part', 'Pastorale', 'cz. 5. Pastorale'), []);
+  assert.deepEqual(explainField('part', '', 'cz. 5. Pastorale'), [{ kind: 'empty' }]);
+  assert.deepEqual(explainField('part', 'cz. 2', ''), [{ kind: 'nopart' }]);
+  assert.deepEqual(explainField('part', '', ''), []);
 });
 
 test('shuffle zachowuje elementy', () => {

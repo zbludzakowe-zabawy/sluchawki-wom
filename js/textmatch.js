@@ -272,12 +272,41 @@ export function trackFromFileName(name) {
 
 // ---------- sprawdzanie odpowiedzi w quizie tekstowym ----------
 
+/** odległość Damerau-Levenshteina (zamiana sąsiednich liter = 1 błąd: „Chpoin” → „Chopin”) */
+export function typoDistance(a, b) {
+  if (a === b) return 0;
+  const d = Array.from({ length: a.length + 1 }, (_, i) => [i]);
+  for (let j = 1; j <= b.length; j++) d[0][j] = j;
+  for (let i = 1; i <= a.length; i++) {
+    for (let j = 1; j <= b.length; j++) {
+      const c = a[i - 1] === b[j - 1] ? 0 : 1;
+      d[i][j] = Math.min(d[i - 1][j] + 1, d[i][j - 1] + 1, d[i - 1][j - 1] + c);
+      if (i > 1 && j > 1 && a[i - 1] === b[j - 2] && a[i - 2] === b[j - 1]) d[i][j] = Math.min(d[i][j], d[i - 2][j - 2] + 1);
+    }
+  }
+  return d[a.length][b.length];
+}
+
+/** ile literówek przepuszczamy w słowie tej długości */
+const typoLimit = (len) => (len >= 11 ? 3 : len >= 7 ? 2 : len >= 4 ? 1 : 0);
+
+/** podobieństwo słowa z odpowiedzi do poprawnego: 1 = identyczne, 0.9 = literówka/skrót, 0 = inne; liczby muszą być równe */
+export function answerSim(a, b) {
+  if (a === b) return 1;
+  if (isNum(a) || isNum(b)) return 0;
+  if (a.length >= 4 && b.startsWith(a)) return 0.9; // skrót: „brandenb.”
+  return typoDistance(a, b) <= typoLimit(b.length) ? 0.9 : 0;
+}
+
+const bestAns = (t, list) => list.reduce((m, u) => Math.max(m, answerSim(t, u)), 0);
+
 function seqSim(a, b) {
-  // podobieństwo dwóch list słów: średnia z pokrycia w obie strony
+  // podobieństwo dwóch list słów (a – odpowiedź, b – poprawne): średnia z pokrycia w obie strony
   if (!a.length && !b.length) return 1;
   if (!a.length || !b.length) return 0;
-  const cov = (x, y) => x.reduce((s, t) => s + bestIn(t, y), 0) / x.length;
-  return (cov(a, b) + cov(b, a)) / 2;
+  const covA = a.reduce((s, t) => s + bestAns(t, b), 0) / a.length;
+  const covB = b.reduce((s, u) => s + a.reduce((m, t) => Math.max(m, answerSim(t, u)), 0), 0) / b.length;
+  return (covA + covB) / 2;
 }
 
 const numsOf = (ts) => ts.filter(isNum).sort().join(',');
@@ -286,17 +315,17 @@ export function checkAuthor(answer, correct) {
   const sur = surname(correct);
   const given = tokens(answer, { keepStop: true }).filter((t) => !isNum(t));
   if (!sur || !given.length) return false;
-  if (!given.some((t) => wordSim(t, sur) >= 0.8)) return false;
+  if (!given.some((t) => answerSim(t, sur) > 0)) return false;
   // pozostałe słowa (imiona) muszą pasować do imion lub inicjałów autora
   const others = tokens(correct, { keepStop: true }).filter((t) => t !== sur);
-  return given.every((t) => wordSim(t, sur) >= 0.8 || others.some((o) => wordSim(t, o) >= 0.8 || (t.length === 1 && o[0] === t) || (o.length === 1 && t[0] === o)));
+  return given.every((t) => answerSim(t, sur) > 0 || others.some((o) => answerSim(t, o) > 0 || (t.length === 1 && o[0] === t) || (o.length === 1 && t[0] === o)));
 }
 
 const GENRE = new Set(['opera', 'balet', 'operetka', 'musical', 'piesn', 'oratorium', 'kantata']);
 const noGenre = (ts) => ts.filter((t) => !GENRE.has(t));
 
-/** warianty tytułu: pełny, bez dopisku w nawiasie/cudzysłowie, sam dopisek */
-function titleVariants(title) {
+/** warianty tytułu (tekst): pełny, bez dopisku w nawiasie/cudzysłowie, sam dopisek */
+function titleVariantTexts(title) {
   const t = String(title || '').replace(/[“”„"]|''/g, '"');
   const out = new Set([t]);
   for (const re of [/\(([^)]*)\)/g, /"([^"]*)"/g]) {
@@ -305,14 +334,19 @@ function titleVariants(title) {
     out.add(t.replace(re, ' '));
     for (const x of inner) out.add(x);
   }
-  return [...out].map((v) => noGenre(tokens(v))).filter((v) => v.length);
+  return [...out].filter((v) => noGenre(tokens(v)).length);
+}
+
+function titleScore(a, variant) {
+  const c = noGenre(tokens(variant));
+  return (numsOf(a) === numsOf(c) ? 1 : 0) + seqSim(a, c);
 }
 
 export function checkTitle(answer, correct) {
   const a = noGenre(tokens(answer));
   if (!tokens(correct).length) return !a.length;
   if (!a.length) return false;
-  return titleVariants(correct).some((c) => numsOf(a) === numsOf(c) && seqSim(a, c) >= 0.8);
+  return titleVariantTexts(correct).some((v) => titleScore(a, v) >= 1.8);
 }
 
 export function checkPart(answer, correct) {
@@ -334,6 +368,94 @@ export function checkAnswer(ans, track) {
   const title = checkTitle(ans.title, track.title);
   const part = checkPart(ans.part, track.part);
   return { author, title, part, ok: author && title && part };
+}
+
+// ---------- co dokładnie było źle (pokazywane po odpowiedzi) ----------
+
+const bare = (w) => w.replace(/^[^\p{L}\p{N}]+|[^\p{L}\p{N}]+$/gu, '');
+
+/** słowa tekstu z tokenami: [{word, tok}] (tokeny liczone w kontekście poprzednich słów – „cz. I” → 1) */
+function wordTokens(text, opts) {
+  const words = String(text || '').replace(/[“”„"]|''/g, ' ').split(/\s+/).filter(Boolean);
+  const out = [];
+  let before = 0;
+  for (let i = 0; i < words.length; i++) {
+    const all = tokens(words.slice(0, i + 1).join(' '), { ...opts, keepStop: true });
+    const mine = all.slice(before);
+    for (const tok of mine) {
+      if (STOP.has(tok) || GENRE.has(tok)) continue;
+      out.push({ word: mine.length > 1 ? tok : bare(words[i]), tok }); // „op.40” → „op”, „40”
+    }
+    before = all.length;
+  }
+  return out;
+}
+
+/**
+ * Porównanie słowo po słowie. Zwraca listę uwag:
+ * {kind:'typo', given, fix} – literówka (zaliczona), {kind:'wrong', given, fix?} – złe słowo / zła liczba,
+ * {kind:'missing', fix} – brakuje słowa lub liczby, {kind:'empty'} – puste pole, {kind:'nopart'} – utwór nie ma części.
+ */
+export function explainField(field, answer, correct) {
+  const roman = field === 'part';
+  const A = wordTokens(answer, { roman });
+  if (field === 'title') {
+    // porównujemy z wariantem tytułu najbliższym odpowiedzi (np. bez dopisku w cudzysłowie)
+    const a = A.map((x) => x.tok);
+    const vs = titleVariantTexts(correct);
+    if (vs.length) correct = vs.reduce((best, v) => (titleScore(a, v) > titleScore(a, best) ? v : best), vs[0]);
+  }
+  const C = wordTokens(correct, { roman });
+  if (!C.length) return A.length ? [{ kind: 'nopart' }] : [];
+  if (!A.length) return [{ kind: 'empty' }];
+  const used = new Set();
+  const res = new Array(A.length).fill(null);
+  // 1) identyczne słowa, 2) literówki, 3) złe liczby (z podpowiedzią właściwej), 4) reszta – złe
+  A.forEach((x, i) => {
+    const j = C.findIndex((c, k) => !used.has(k) && c.tok === x.tok);
+    if (j >= 0) { used.add(j); res[i] = { kind: 'ok' }; }
+  });
+  A.forEach((x, i) => {
+    if (res[i]) return;
+    let best = -1;
+    C.forEach((c, k) => { if (!used.has(k) && answerSim(x.tok, c.tok) > 0 && best < 0) best = k; });
+    if (best >= 0) { used.add(best); res[i] = { kind: 'typo', given: x.word, fix: C[best].word }; }
+  });
+  A.forEach((x, i) => {
+    if (res[i] || !isNum(x.tok)) return;
+    const j = C.findIndex((c, k) => !used.has(k) && isNum(c.tok));
+    if (j >= 0) { used.add(j); res[i] = { kind: 'wrong', given: x.word, fix: C[j].word }; }
+  });
+  A.forEach((x, i) => {
+    if (res[i]) return;
+    if (field === 'author') {
+      // imię lub inicjał autora
+      const k = C.findIndex((c) => (x.tok.length === 1 && c.tok[0] === x.tok) || (c.tok.length === 1 && x.tok[0] === c.tok));
+      if (k >= 0) { used.add(k); res[i] = { kind: 'ok' }; return; }
+    }
+    res[i] = { kind: 'wrong', given: x.word };
+  });
+  const out = res.filter((r) => r.kind !== 'ok');
+  // brakujące: w autorze tylko nazwisko (imiona są opcjonalne), w części – słowa tylko, gdy nie podano nazwy
+  const sur = field === 'author' ? surname(correct) : '';
+  const gaveWords = A.some((x) => !isNum(x.tok));
+  const gaveNums = A.some((x) => isNum(x.tok));
+  C.forEach((c, k) => {
+    if (used.has(k)) return;
+    if (field === 'author' && c.tok !== sur) return;
+    if (field === 'part' && (isNum(c.tok) ? !gaveNums && gaveWords : gaveNums && !gaveWords)) return;
+    if (!out.some((o) => o.kind === 'missing' && o.fix === c.word)) out.push({ kind: 'missing', fix: c.word });
+  });
+  return out;
+}
+
+/** uwagi do wszystkich pól odpowiedzi: {author:[…], title:[…], part:[…]} */
+export function explainAnswer(ans, track) {
+  return {
+    author: explainField('author', ans.author, track.author),
+    title: explainField('title', ans.title, track.title),
+    part: explainField('part', ans.part, track.part),
+  };
 }
 
 /** losowe przetasowanie (kryptograficzne) */

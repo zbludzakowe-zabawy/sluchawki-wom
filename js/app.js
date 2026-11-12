@@ -4,7 +4,7 @@ import * as drive from './drive.js';
 import { readFileText } from './ocr.js';
 import { confetti } from './confetti.js';
 import {
-  parseList, matchAll, matchScore, confidence, MATCH_MIN, trackFromFileName, checkAnswer, shuffle, fold, surname,
+  parseList, matchAll, matchScore, confidence, MATCH_MIN, trackFromFileName, checkAnswer, explainAnswer, shuffle, fold, surname,
 } from './textmatch.js';
 
 // ---------- narzędzia ----------
@@ -545,11 +545,13 @@ function renderQuestion(autoplay) {
   } else {
     const d = answered ? answered.given : (quiz.draft || { author: '', title: '', part: '' });
     const mark = (f) => (answered ? (answered.detail[f] ? 'right' : 'wrong') : '');
+    const ex = answered && !answered.skipped ? explainAnswer(d, t) : null;
+    const why = (f) => (ex ? whyHtml(ex[f], answered.detail[f]) : '');
     body = `
       <form id="q-form" class="qform" autocomplete="off">
-        <label class="${mark('author')}">Autor (imię i nazwisko)<input name="author" value="${esc(d.author)}" ${answered ? 'readonly' : ''} autocapitalize="words" spellcheck="false"></label>
-        <label class="${mark('title')}">Tytuł<input name="title" value="${esc(d.title)}" ${answered ? 'readonly' : ''} spellcheck="false"></label>
-        <label class="${mark('part')}">Część / fragment<input name="part" value="${esc(d.part)}" ${answered ? 'readonly' : ''} spellcheck="false"></label>
+        <label class="${mark('author')}">Autor (imię i nazwisko)<input name="author" value="${esc(d.author)}" ${answered ? 'readonly' : ''} autocapitalize="words" spellcheck="false"></label>${why('author')}
+        <label class="${mark('title')}">Tytuł<input name="title" value="${esc(d.title)}" ${answered ? 'readonly' : ''} spellcheck="false"></label>${why('title')}
+        <label class="${mark('part')}">Część / fragment<input name="part" value="${esc(d.part)}" ${answered ? 'readonly' : ''} spellcheck="false"></label>${why('part')}
         ${answered ? '' : '<div class="grid2"><button type="button" class="btn" id="q-skip">Nie wiem</button><button class="btn primary">Sprawdź</button></div>'}
       </form>`;
   }
@@ -665,10 +667,27 @@ function answerChoice(id) {
   renderQuestion(false);
 }
 
+/** opis pomyłek w polu odpowiedzi (literówki – zaliczone, złe słowa i liczby, braki) */
+function whyHtml(notes, ok, inline) {
+  if (!notes || !notes.length) return '';
+  const q = (x) => `„${esc(x)}”`;
+  const items = notes.map((n) => {
+    if (n.kind === 'typo') return `<span class="typo">${q(n.given)} → ${q(n.fix)}</span>`;
+    if (n.kind === 'wrong') return `<span class="err">„<s>${esc(n.given)}</s>”${n.fix ? ` → ${q(n.fix)}` : ' – nie pasuje'}</span>`;
+    if (n.kind === 'missing') return `<span class="err">brakuje ${q(n.fix)}</span>`;
+    if (n.kind === 'empty') return '<span class="err">brak odpowiedzi</span>';
+    if (n.kind === 'nopart') return '<span class="err">ten utwór nie ma części – pole zostaw puste</span>';
+    return '';
+  });
+  const typosOnly = notes.every((n) => n.kind === 'typo');
+  const lead = ok && typosOnly ? 'Zaliczone mimo literówki: ' : typosOnly ? 'Literówka: ' : 'Błąd: ';
+  return `<${inline ? 'span' : 'div'} class="why${ok ? ' ok-note' : ''}">${inline ? ' (' : ''}${lead}${items.join(', ')}${inline ? ')' : ''}</${inline ? 'span' : 'div'}>`;
+}
+
 function answerText(given, skipped) {
   const t = quizTrack();
   const detail = skipped ? { author: false, title: false, part: false, ok: false } : checkAnswer(given, t);
-  quiz.answers.push({ id: t.id, ok: detail.ok, given, detail });
+  quiz.answers.push({ id: t.id, ok: detail.ok, given, detail, ...(skipped ? { skipped: true } : {}) });
   quiz.phase = 'feedback';
   saveQuiz();
   renderQuestion(false);
@@ -705,7 +724,9 @@ async function resultView() {
     if (res.type === 'choice') { const g = byId(a.given); return g ? `Twoja odpowiedź: ${trackLabel(g)}` : ''; }
     const g = a.given || {};
     if (!g.author && !g.title && !g.part) return 'Bez odpowiedzi';
-    const f = (k, l) => `<span class="${a.detail[k] ? 'ok' : 'bad'}">${l}: ${esc(g[k] || '—')}</span>`;
+    const t = byId(a.id);
+    const ex = t ? explainAnswer(g, t) : null;
+    const f = (k, l) => `<span class="${a.detail[k] ? 'ok' : 'bad'}">${l}: ${esc(g[k] || '—')}</span>${ex ? whyHtml(ex[k], a.detail[k], true) : ''}`;
     return `${f('author', 'autor')} · ${f('title', 'tytuł')} · ${f('part', 'część')}`;
   };
   render(`
