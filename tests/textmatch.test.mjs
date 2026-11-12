@@ -257,3 +257,36 @@ test('parseList – uwagi w nawiasie [uwagi: …] są osobnym polem', () => {
   assert.equal(list[1].note, 'tylko temat do poprawki');
   assert.deepEqual(parseLine('Bach – Suita nr 3'), { author: 'Bach', title: 'Suita nr 3', part: '' });
 });
+
+test('fixOcr – typowe błędy odczytu', async () => {
+  const { fixOcr } = await import('../js/textmatch.js');
+  assert.equal(fixOcr('Ananim', 'author'), 'Anonim');
+  assert.equal(fixOcr('Georg Friedrich Handel', 'author'), 'Georg Friedrich Händel');
+  assert.equal(fixOcr('gratorium Mesjasz'), 'oratorium Mesjasz');
+  assert.equal(fixOcr('Ill Koncert brandenburski G-dur'), 'III Koncert brandenburski G-dur');
+  assert.equal(fixOcr('XX Koncert fortepianowy d-moli KV466'), 'XX Koncert fortepianowy d-moll KV466');
+  assert.equal(fixOcr('Kwartet nr 7 »Razumowski”'), 'Kwartet nr 7 „Razumowski”');
+  assert.equal(fixOcr('SZ. 1. Allegro', 'part'), 'cz. 1. Allegro');
+  assert.equal(fixOcr('gz. 3. Allegro vivace', 'part'), 'cz. 3. Allegro vivace');
+  assert.equal(fixOcr('nr 44. Alleluja,', 'part'), 'nr 44. Alleluja');
+  // bez zmian: poprawne słowa, odmiany, włoskie „Il”
+  assert.equal(fixOcr('Il barbiere di Siviglia'), 'Il barbiere di Siviglia');
+  assert.equal(fixOcr('IX Symfonii d-moll'), 'IX Symfonii d-moll');
+  assert.equal(fixOcr('Serenada G-dur KV525'), 'Serenada G-dur KV525');
+});
+
+test('fixFromFileName – poprawki według nazwy pliku', async () => {
+  const { fixFromFileName } = await import('../js/textmatch.js');
+  const r = { author: 'Franz Schubert', title: 'Małgorzata przy kotowrotku', part: '' };
+  assert.equal(fixFromFileName(r, 'Franz Schubert - Małgorzata przy kołowrotku.mp3'), 1);
+  assert.equal(r.title, 'Małgorzata przy kołowrotku');
+  const b = { author: 'Bedfigh Smetana', title: 'opera Sprzedana narzeczona', part: 'Polka' };
+  fixFromFileName(b, 'Bedřich Smetana - opera Sprzedana narzeczona - Polka.mp3');
+  assert.equal(b.author, 'Bedřich Smetana');
+  const k = { author: 'Ludwig van Beethoven', title: 'Kwartet smyczkowy nr 7 F-dur op. 59 nr 1 „Bazumowski”', part: 'cz. 1' };
+  fixFromFileName(k, 'Ludwig van Beethoven - Kwartet smyczkowy nr 7 F-dur op. 59 nr 1 Razumowski - cz. 1.mp3');
+  assert.equal(k.title, 'Kwartet smyczkowy nr 7 F-dur op. 59 nr 1 „Razumowski”');
+  // słowa wyraźnie inne (nie literówka) zostają
+  const c = { author: 'Chopin', title: 'Mazurek a-moll', part: '' };
+  assert.equal(fixFromFileName(c, 'Fryderyk Chopin - Mazurek op. 68.mp3'), 0);
+});

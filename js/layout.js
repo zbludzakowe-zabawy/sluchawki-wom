@@ -1,3 +1,5 @@
+import { fixOcr } from './textmatch.js';
+
 // Słuchawki – składanie tekstu z OCR według położenia słów.
 // Dla tabel (nagłówek „Autor / Tytuł / Część”) słowa trafiają do kolumn według położenia,
 // a komórki zawinięte do następnej linii (bez numeru L.p.) są doklejane do swojego wiersza.
@@ -69,7 +71,7 @@ export function layoutText(r) {
   const h = median(words.map((w) => w.y1 - w.y0)) || 10;
   const hi = lines.findIndex((l) => l.words.some((w) => /^(autor|kompozytor)/.test(fold(w.text)))
     && l.words.some((w) => /^(tytu|utwor)/.test(fold(w.text))));
-  if (hi < 0) return lines.map((l) => plainLine(l, h)).join('\n');
+  if (hi < 0) return lines.map((l) => fixOcr(plainLine(l, h))).join('\n');
 
   const head = lines[hi].words;
   const find = (re) => head.find((w) => re.test(fold(w.text).replace(/^["'„]/, '')));
@@ -109,7 +111,7 @@ export function layoutText(r) {
     .map((r, i) => {
       const n = r.lp.length ? r.lp.map((w) => w.text).join('').replace(/[^\d]/g, '') || String(i + 1) : String(i + 1);
       const note = joinWords(r.note).replace(/[[\]]/g, '');
-      return `${n}.\t${joinWords(r.author)}\t${joinWords(r.title)}\t${joinWords(r.part)}${note ? `\t[uwagi: ${note}]` : ''}`;
+      return `${n}.\t${fixOcr(joinWords(r.author), 'author')}\t${fixOcr(joinWords(r.title))}\t${fixOcr(joinWords(r.part), 'part')}${note ? `\t[uwagi: ${note}]` : ''}`;
     });
   return [...pre, ...body].join('\n');
 }

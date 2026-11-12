@@ -4,7 +4,7 @@ import * as drive from './drive.js';
 import { readFileText } from './ocr.js';
 import { confetti } from './confetti.js';
 import {
-  parseList, matchAll, matchScore, confidence, MATCH_MIN, trackFromFileName, checkAnswer, explainAnswer, shuffle, spreadOrder, questionCount, fold, surname,
+  parseList, matchAll, matchScore, fixFromFileName, confidence, MATCH_MIN, trackFromFileName, checkAnswer, explainAnswer, shuffle, spreadOrder, questionCount, fold, surname,
 } from './textmatch.js';
 
 // ---------- narzędzia ----------
@@ -783,6 +783,20 @@ function autoMatch(model, all) {
   const files = model.files.filter((f) => !taken.has(f.id) && !model.blocked.has(f.id));
   const { result } = matchAll(rows, files);
   rows.forEach((r, i) => { r.fileId = result[i].fileId; r.score = result[i].score; if (all) r.manual = false; });
+  if (model.fixWords) fixWordsFromFiles(model, rows);
+}
+
+/** przy dodawaniu: błędy odczytu poprawiane według nazw dopasowanych plików (tylko pewne i „sprawdź”) */
+function fixWordsFromFiles(model, rows) {
+  const byId = new Map(model.files.map((f) => [f.id, f]));
+  let n = 0;
+  for (const r of rows) {
+    const f = r.fileId && byId.get(r.fileId);
+    if (!f || confidence(r.score) === 'low') continue;
+    const k = fixFromFileName(r, f.name);
+    if (k) { n += k; r.score = matchScore(r, f.name); }
+  }
+  if (n) toast(`Poprawiono ${pl(n, 'słowo', 'słowa', 'słów')} według nazw plików – sprawdź listę.`, 'good');
 }
 
 function renderTable(root, model, onChange) {
@@ -913,7 +927,7 @@ async function addView(setId) {
   if (setId && sets.some((s) => s.id === setId)) { draft.target = 'existing'; draft.setId = setId; }
   if (draft.target === 'existing' && !sets.some((s) => s.id === draft.setId)) { draft.target = 'new'; draft.setId = ''; }
   setHeader('Dodawanie utworów', setId ? `#/zbior/${setId}` : '#/');
-  const model = { rows: draft.rows, files: draft.files, blocked: new Set() };
+  const model = { rows: draft.rows, files: draft.files, blocked: new Set(), fixWords: true };
   const updateBlocked = () => {
     model.blocked = new Set();
     const s = sets.find((x) => x.id === draft.setId);
