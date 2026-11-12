@@ -41,7 +41,7 @@ Format pliku/eksportu (`packSet`): `{ app:'sluchawki', v:1, id, name, folders, e
 Eksport wszystkich: `{ app:'sluchawki', v:1, sets:[…] }`. Import rozpoznaje zbiór po `id`, potem po nazwie (zastąp / zapisz osobno).
 Link „Udostępnij”: `#/import/` + `z` + base64url(deflate-raw(JSON)) (albo `j` + base64url(JSON) bez kompresji).
 
-Stan w localStorage: `sluchawki-prefs` (liczba pytań, `fragment`: 0 = cały utwór), `sluchawki-player`, `sluchawki-quiz` (wznawianie quizu), `sluchawki-draft` (szkic dodawania), `sluchawki-last-result`, `sluchawki-api-key` (własny klucz – nadpisuje config).
+Stan w localStorage: `sluchawki-prefs` (liczba pytań `count`: '75' / 'all' / '150' – `questionCount`; przy 150% `spreadOrder` – połowa utworów drugi raz, nigdy raz za razem; `fragment`: 0 = cały utwór), `sluchawki-player`, `sluchawki-quiz` (wznawianie quizu), `sluchawki-draft` (szkic dodawania), `sluchawki-last-result`, `sluchawki-api-key` (własny klucz – nadpisuje config).
 
 ## Najważniejsze zachowania
 - **Dodawanie**: nazwa zbioru (nowy / istniejący, ale nie z biblioteki) → lista ze zdjęcia/PDF/tekstu (`readFileText` → `layoutText` → edytowalny tekst → `parseList`) → link do folderu Dysku → automatyczne dopasowanie (`matchAll`, zachłannie, próg `MATCH_MIN` 0.35; kolory: ≥0.7 pewne, ≥0.5 sprawdź) → ręczne poprawki → „Zatwierdź”.

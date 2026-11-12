@@ -566,6 +566,44 @@ export function shuffle(arr, rnd = cryptoRandom) {
   return a;
 }
 
+/**
+ * Kolejność pytań z powtórkami: każdy utwór raz, a `extra` losowych utworów drugi raz.
+ * Ten sam utwór nie pada zaraz po sobie – powtórka jest możliwie daleko (co najmniej kilka pytań odstępu).
+ */
+export function spreadOrder(ids, extra, rnd = cryptoRandom) {
+  const n = ids.length;
+  extra = Math.max(0, Math.min(extra, n));
+  if (!extra) return shuffle(ids, rnd);
+  const twice = new Set(shuffle(ids, rnd).slice(0, extra));
+  for (let gap = Math.max(1, Math.floor(n / 2)); gap >= 1; gap--) {
+    for (let attempt = 0; attempt < 30; attempt++) {
+      const left = new Map(ids.map((id) => [id, twice.has(id) ? 2 : 1]));
+      const out = [];
+      let ok = true;
+      while (left.size) {
+        const recent = new Set(out.slice(-gap));
+        const free = [...left.keys()].filter((id) => !recent.has(id));
+        if (!free.length) { ok = false; break; }
+        // najpierw te, które mają jeszcze 2 wystąpienia – żeby na końcu nie zostały same powtórki
+        const need = free.filter((id) => left.get(id) === 2);
+        const pool = need.length && rnd() < need.length / left.size + 0.3 ? need : free;
+        const id = pool[Math.floor(rnd() * pool.length)];
+        out.push(id);
+        if (left.get(id) === 1) left.delete(id); else left.set(id, 1);
+      }
+      if (ok) return out;
+    }
+  }
+  return shuffle([...ids, ...twice], rnd); // nie powinno się zdarzyć
+}
+
+/** liczba pytań dla ustawienia: '75' – ok. 75% utworów, 'all' – wszystkie, '150' – półtora raza tyle */
+export function questionCount(setting, n) {
+  if (setting === '75') return Math.max(1, Math.round(n * 0.75));
+  if (setting === '150') return n < 2 ? n : Math.round(n * 1.5);
+  return n;
+}
+
 function cryptoRandom() {
   const u = new Uint32Array(1);
   globalThis.crypto.getRandomValues(u);
