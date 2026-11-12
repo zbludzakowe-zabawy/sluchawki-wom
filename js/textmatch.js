@@ -328,14 +328,68 @@ function seqSim(a, b) {
 
 const numsOf = (ts) => ts.filter(isNum).sort().join(',');
 
+// Imiona w różnych językach = to samo imię („Johann” = „Jan”, „Wolfgang Amadeus” = „Wolfgang Amadeusz”).
+const NAME_GROUPS = [
+  'jan johann johan johannes jean john giovanni juan ivan iwan',
+  'jerzy georg george georges giorgio',
+  'fryderyk friedrich frederic frederick federico bedrich',
+  'amadeusz amadeus amadeo amedeo',
+  'ludwik ludwig louis luigi ludovico',
+  'franciszek franz francois francesco frantisek francis',
+  'piotr pyotr petr peter pietro pierre pjotr',
+  'siergiej sergei sergey sergej sergiusz',
+  'jozef joseph josef giuseppe jose',
+  'antoni antonio antonin anton antoine',
+  'karol carl karl charles carlo karel',
+  'mikolaj nikolai nikolaj nikolay nicolas nicola nicolo',
+  'ryszard richard riccardo',
+  'edward edvard',
+  'feliks felix',
+  'gustaw gustav gustave',
+  'dymitr dmitri dmitrij dmitry',
+  'aleksander alexander alexandre alessandro aleksandr',
+  'henryk heinrich henri henry enrico',
+  'maurycy maurice moritz',
+  'krzysztof christoph christophe christopher cristoforo',
+  'wilhelm william guillaume guglielmo',
+  'klaudiusz claude claudio',
+  'jakub jacob jakob giacomo jacques james',
+  'michal michael michel michele mikhail michail',
+  'andrzej andreas andre andrea andrei andrew',
+  'pawel paul paolo pablo',
+  'tomasz thomas tommaso',
+  'hektor hector',
+  'ignacy ignaz ignace',
+  'wincenty vincenzo vincent',
+  'modest modeste',
+  'gioachino gioacchino joachim',
+];
+const NAME_CANON = new Map();
+const NAME_INITIALS = new Map(); // „jerzy” → {j, g} – inicjał może pochodzić z dowolnej wersji imienia
+for (const g of NAME_GROUPS) {
+  const w = g.split(' ');
+  for (const x of w) NAME_CANON.set(x, w[0]);
+  NAME_INITIALS.set(w[0], new Set(w.map((x) => x[0])));
+}
+/** czy jednoliterowe „ini” to inicjał imienia (oryginał „raw”, wspólna forma „canon”) */
+const isInitial = (ini, raw, canon) => ini.length === 1 && (raw[0] === ini || (NAME_INITIALS.get(canon) || new Set()).has(ini));
+/** wspólna forma imienia (także z literówką: „Johhan” → „jan”); inne słowa bez zmian */
+export function canonName(t) {
+  if (NAME_CANON.has(t)) return NAME_CANON.get(t);
+  if (t.length >= 4) for (const [v, c] of NAME_CANON) if (answerSim(t, v) > 0) return c;
+  return t;
+}
+
 export function checkAuthor(answer, correct) {
-  const sur = surname(correct);
+  const sur = canonName(surname(correct));
   const given = tokens(answer, { keepStop: true }).filter((t) => !isNum(t));
   if (!sur || !given.length) return false;
-  if (!given.some((t) => answerSim(t, sur) > 0)) return false;
-  // pozostałe słowa (imiona) muszą pasować do imion lub inicjałów autora
-  const others = tokens(correct, { keepStop: true }).filter((t) => t !== sur);
-  return given.every((t) => answerSim(t, sur) > 0 || others.some((o) => answerSim(t, o) > 0 || (t.length === 1 && o[0] === t) || (o.length === 1 && t[0] === o)));
+  const g = given.map((t) => ({ raw: t, c: canonName(t) }));
+  if (!g.some((t) => answerSim(t.c, sur) > 0)) return false;
+  // pozostałe słowa (imiona) muszą pasować do imion (w dowolnym języku) lub inicjałów autora
+  const others = tokens(correct, { keepStop: true }).map((t) => ({ raw: t, c: canonName(t) })).filter((o) => o.c !== sur);
+  const initial = (t, o) => isInitial(t.raw, o.raw, o.c) || isInitial(o.raw, t.raw, t.c);
+  return g.every((t) => answerSim(t.c, sur) > 0 || others.some((o) => answerSim(t.c, o.c) > 0 || initial(t, o)));
 }
 
 const GENRE = new Set(['opera', 'balet', 'operetka', 'musical', 'piesn', 'oratorium', 'kantata']);
@@ -395,7 +449,7 @@ export function checkAnswer(ans, track) {
 const bare = (w) => w.replace(/^[^\p{L}\p{N}]+|[^\p{L}\p{N}]+$/gu, '');
 
 /** słowa tekstu z tokenami: [{word, tok}] (tokeny liczone w kontekście poprzednich słów – „cz. I” → 1) */
-function wordTokens(text, { keys, ...opts }) {
+function wordTokens(text, { keys, names, ...opts }) {
   const words = String(text || '').replace(/[“”„"]|''/g, ' ').split(/\s+/).filter(Boolean);
   const tok = (ws) => tokens(keys ? keyed(ws.join(' ')) : ws.join(' '), { ...opts, keepStop: true });
   const full = tok(words); // całość – „a dur” (dwa słowa) to jedna tonacja „adur”
@@ -406,7 +460,7 @@ function wordTokens(text, { keys, ...opts }) {
     const mine = full.slice(before, Math.max(before, upto));
     for (const t of mine) {
       if (STOP.has(t) || GENRE.has(t)) continue;
-      out.push({ word: mine.length > 1 && !isKey(t) ? t : bare(words[i]), tok: t }); // „op.40” → „op”, „40”
+      out.push({ word: mine.length > 1 && !isKey(t) ? t : bare(words[i]), tok: names ? canonName(t) : t, raw: t }); // „op.40” → „op”, „40”
     }
     before = Math.max(before, upto);
   }
@@ -423,7 +477,8 @@ export function explainField(field, answer, correct) {
   const keys = field !== 'author';
   const full = correct;
   let partial = false;
-  const A = wordTokens(answer, { roman, keys });
+  const names = field === 'author';
+  const A = wordTokens(answer, { roman, keys, names });
   if (field === 'title') {
     // porównujemy z wariantem tytułu najbliższym odpowiedzi (np. bez dopisku w cudzysłowie)
     const a = A.map((x) => x.tok);
@@ -432,7 +487,7 @@ export function explainField(field, answer, correct) {
     // zaliczony tylko fragment tytułu (np. sam polski tytuł) – pokażemy pełny tytuł
     partial = vs.length > 1 && correct !== vs[0] && checkTitle(answer, full);
   }
-  const C = wordTokens(correct, { roman, keys });
+  const C = wordTokens(correct, { roman, keys, names });
   if (!C.length) return A.length ? [{ kind: 'nopart' }] : [];
   if (!A.length) return [{ kind: 'empty' }];
   const used = new Set();
@@ -459,14 +514,14 @@ export function explainField(field, answer, correct) {
     if (res[i]) return;
     if (field === 'author') {
       // imię lub inicjał autora
-      const k = C.findIndex((c) => (x.tok.length === 1 && c.tok[0] === x.tok) || (c.tok.length === 1 && x.tok[0] === c.tok));
+      const k = C.findIndex((c) => isInitial(x.raw, c.raw, c.tok) || isInitial(c.raw, x.raw, x.tok));
       if (k >= 0) { used.add(k); res[i] = { kind: 'ok' }; return; }
     }
     res[i] = { kind: 'wrong', given: x.word };
   });
   const out = res.filter((r) => r.kind !== 'ok');
   // brakujące: w autorze tylko nazwisko (imiona są opcjonalne), w części – słowa tylko, gdy nie podano nazwy
-  const sur = field === 'author' ? surname(correct) : '';
+  const sur = field === 'author' ? canonName(surname(correct)) : '';
   const gaveWords = A.some((x) => !isNum(x.tok));
   const gaveNums = A.some((x) => isNum(x.tok));
   C.forEach((c, k) => {

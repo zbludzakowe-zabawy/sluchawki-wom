@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {
-  fold, tokens, parseLine, parseList, matchAll, matchScore, checkAnswer, checkAuthor, checkTitle, checkPart, explainField, answerSim,
+  fold, tokens, parseLine, parseList, matchAll, matchScore, checkAnswer, checkAuthor, checkTitle, checkPart, explainField, answerSim, canonName,
   cleanFileName, trackFromFileName, shuffle,
 } from '../js/textmatch.js';
 
@@ -196,6 +196,25 @@ test('quiz tekstowy – tytuł po polsku i w oryginale', () => {
   assert.deepEqual(explainField('title', 'Na Boże Narodzenie', "Concerto Grosso g-moll ''Na Boże Narodzenie'', op. 6 nr 8").at(-1),
     { kind: 'fulltitle', fix: 'Concerto Grosso g-moll «Na Boże Narodzenie», op. 6 nr 8' });
   assert.deepEqual(explainField('title', 'Król Lear', 'Erlkönig (Król elfów)').some((n) => n.kind === 'fulltitle'), false); // błąd – bez tej uwagi
+});
+
+test('quiz tekstowy – imiona w różnych językach', () => {
+  assert.equal(checkAuthor('Johann Sebastian Bach', 'Jan Sebastian Bach'), true);
+  assert.equal(checkAuthor('Johan Sebastian Bach', 'Jan Sebastian Bach'), true);
+  assert.equal(checkAuthor('Jan Sebastian Bach', 'Johann Sebastian Bach'), true);
+  assert.equal(checkAuthor('Johhan Bach', 'Jan Sebastian Bach'), true); // literówka w imieniu
+  assert.equal(checkAuthor('J. S. Bach', 'Jan Sebastian Bach'), true);
+  assert.equal(checkAuthor('Wolfgang Amadeus Mozart', 'Wolfgang Amadeusz Mozart'), true);
+  assert.equal(checkAuthor('Sergei Prokofiew', 'Siergiej Prokofiew'), true);
+  assert.equal(checkAuthor('Frédéric Chopin', 'Fryderyk Chopin'), true);
+  assert.equal(checkAuthor('G. F. Händel', 'Jerzy Fryderyk Händel'), true); // inicjały oryginalnych imion
+  assert.equal(checkAuthor('Georg Friedrich Händel', 'Jerzy Fryderyk Händel'), true);
+  assert.equal(checkAuthor('Karl Bach', 'Jan Sebastian Bach'), false); // inne imię
+  assert.equal(checkAuthor('Piotr Bach', 'Jan Sebastian Bach'), false);
+  assert.equal(canonName('bach'), 'bach');
+  assert.deepEqual(explainField('author', 'Johan Sebastian Bach', 'Jan Sebastian Bach'), []);
+  assert.deepEqual(explainField('author', 'G. F. Händel', 'Jerzy Fryderyk Händel'), []);
+  assert.deepEqual(explainField('author', 'Karl Bach', 'Jan Sebastian Bach'), [{ kind: 'wrong', given: 'Karl' }]);
 });
 
 test('shuffle zachowuje elementy', () => {
