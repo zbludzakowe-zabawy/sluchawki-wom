@@ -4,7 +4,7 @@ import * as drive from './drive.js';
 import { readFileText } from './ocr.js';
 import { confetti } from './confetti.js';
 import {
-  parseList, matchAll, matchScore, fixFromFileName, confidence, MATCH_MIN, trackFromFileName, checkAnswer, explainAnswer, shuffle, spreadOrder, questionCount, fold, surname,
+  parseList, matchAll, matchScore, fixFromFileName, fragmentSuggestions, sortFragments, confidence, MATCH_MIN, trackFromFileName, checkAnswer, explainAnswer, shuffle, spreadOrder, questionCount, fold, surname,
 } from './textmatch.js';
 
 // ---------- narzędzia ----------
@@ -18,6 +18,10 @@ const fmtDate = (t) => new Date(t).toLocaleString('pl-PL', { day: 'numeric', mon
 const pl = (n, one, few, many) => `${n} ${n === 1 ? one : (n % 10 >= 2 && n % 10 <= 4 && (n % 100 < 10 || n % 100 >= 20)) ? few : many}`;
 const utwory = (n) => pl(n, 'utwór', 'utwory', 'utworów');
 export const trackLabel = (t) => `${t.author ? t.author + ' – ' : ''}${t.title || '(bez tytułu)'}${t.part ? ', ' + t.part : ''}`;
+/** pliki utworu: pierwszy (fileId) + kolejne fragmenty (extra) – rzadko utwór jest nagrany w kilku plikach */
+const trackFiles = (t) => [t, ...(t.extra || [])];
+const isDownloaded = (t) => trackFiles(t).every((f) => downloaded.has(f.fileId));
+const filesBadge = (t) => (t.extra && t.extra.length ? ` <small class="muted">· ${t.extra.length + 1} pliki</small>` : '');
 /** uwagi do utworu (np. czerwony dopisek na liście) – osobno, nie są częścią opisu utworu */
 const noteHtml = (t, tag = 'small') => (t && t.note ? `<${tag} class="note">Uwagi: ${esc(t.note)}</${tag}>` : '');
 
@@ -135,7 +139,7 @@ async function home() {
   await refreshDownloaded();
   const cards = sets.map((s) => {
     const n = s.tracks.length;
-    const off = n && s.tracks.every((t) => downloaded.has(t.fileId));
+    const off = n && s.tracks.every(isDownloaded);
     return `<a class="card set-card" href="#/zbior/${esc(s.id)}">
       <span class="set-ico" aria-hidden="true">♫</span>
       <span class="set-main"><strong>${esc(s.name)}</strong><small>${utwory(n)}${off ? ' · <span class="ok">dostępny offline</span>' : ''}</small></span>
@@ -189,8 +193,8 @@ async function setView(id) {
   setHeader(set.name, '#/');
   await refreshDownloaded();
   const n = set.tracks.length;
-  const have = set.tracks.filter((t) => downloaded.has(t.fileId)).length;
-  const size = set.tracks.reduce((s, t) => s + (t.size || 0), 0);
+  const have = set.tracks.filter(isDownloaded).length;
+  const size = set.tracks.flatMap(trackFiles).reduce((s, f) => s + (f.size || 0), 0);
   const authors = groupAuthors(set.tracks);
   const results = (await db.resultsFor(id).catch(() => [])).sort((a, b) => b.date - a.date).slice(0, 5);
   const locked = !!set.lib;
@@ -233,7 +237,7 @@ async function setView(id) {
       <div id="off-progress" hidden><div class="bar"><i></i></div><p class="muted" id="off-status"></p><button class="btn" id="off-cancel">Przerwij</button></div>
     </div>
     ${n ? `<details class="card tracks-box"><summary>Utwory w zbiorze (${n})</summary><ol class="track-list">${set.tracks.map((t) =>
-      `<li>${esc(trackLabel(t))}${downloaded.has(t.fileId) ? ' <span class="dl" title="pobrany">⇩</span>' : ''}${noteHtml(t)}</li>`).join('')}</ol>
+      `<li>${esc(trackLabel(t))}${filesBadge(t)}${isDownloaded(t) ? ' <span class="dl" title="pobrany">⇩</span>' : ''}${noteHtml(t)}</li>`).join('')}</ol>
       ${locked ? '' : `<a class="btn wide" href="#/edytuj/${esc(id)}">✎ Edytuj utwory i kolejność</a>`}</details>` : ''}
     <h2 class="sec-title">Eksport i udostępnianie</h2>
     <div class="grid2">
@@ -277,7 +281,7 @@ async function setView(id) {
   if (del) del.addEventListener('click', async () => {
     if (!confirm('Usunąć pobrane nagrania tego zbioru z urządzenia?')) return;
     const keep = await usedElsewhere(set.id);
-    for (const t of set.tracks) if (!keep.has(t.fileId)) await db.deleteAudio(t.fileId);
+    for (const f of set.tracks.flatMap(trackFiles)) if (!keep.has(f.fileId)) await db.deleteAudio(f.fileId);
     toast('Usunięto pobrane nagrania.');
     setView(id);
   });
@@ -315,7 +319,7 @@ function groupAuthors(tracks) {
 
 async function usedElsewhere(setId) {
   const keep = new Set();
-  for (const s of await db.listSets()) if (s.id !== setId) for (const t of s.tracks) keep.add(t.fileId);
+  for (const s of await db.listSets()) if (s.id !== setId) for (const f of s.tracks.flatMap(trackFiles)) keep.add(f.fileId);
   return keep;
 }
 async function cleanupAudio() {
@@ -329,7 +333,8 @@ async function downloadSet(set) {
   if (!drive.hasApiKey()) return toast('Brak klucza Google API – wpisz go w Ustawieniach.', 'error');
   try { if (navigator.storage && navigator.storage.persist) await navigator.storage.persist(); } catch { /* trudno */ }
   await refreshDownloaded();
-  const todo = set.tracks.filter((t, i, a) => !downloaded.has(t.fileId) && a.findIndex((x) => x.fileId === t.fileId) === i);
+  const todo = set.tracks.flatMap((t) => trackFiles(t).map((f, k, all) => ({ ...f, label: trackLabel(t) + (all.length > 1 ? ` (fragment ${k + 1})` : '') })))
+    .filter((f, i, a) => !downloaded.has(f.fileId) && a.findIndex((x) => x.fileId === f.fileId) === i);
   const box = $('#off-progress');
   const bar = $('#off-progress .bar i');
   const st = $('#off-status');
@@ -341,7 +346,7 @@ async function downloadSet(set) {
   let failed = 0;
   for (const t of todo) {
     if (dlCancel) break;
-    st.textContent = `Pobieranie ${done + 1} z ${todo.length}: ${trackLabel(t)}`;
+    st.textContent = `Pobieranie ${done + 1} z ${todo.length}: ${t.label}`;
     try {
       const blob = await drive.download(t, (f) => { bar.style.width = `${((done + f) / todo.length) * 100}%`; });
       await db.putAudio(t.fileId, blob);
@@ -358,7 +363,7 @@ async function downloadSet(set) {
 }
 
 // ---------- odtwarzacz ----------
-let player = ls.get(K.player, null); // { setId, title, queue:[trackId], index }
+let player = ls.get(K.player, null); // { setId, title, queue:[trackId], index, frag } – frag: który plik utworu z kilku plików
 let playerSet = null;
 
 function lastOrderKey(id) { return `sluchawki-last-order-${id}`; }
@@ -377,7 +382,7 @@ async function startPlayer(set, mode, author) {
   let title = 'Po kolei';
   if (mode === 'shuffle') { queue = freshShuffle(queue, set.id); title = 'Losowo'; }
   if (mode === 'author') { queue = author.ids; title = author.name; }
-  player = { setId: set.id, title, queue, index: 0 };
+  player = { setId: set.id, title, queue, index: 0, frag: 0 };
   playerSet = set;
   ls.set(K.player, player);
   go('#/sluchaj');
@@ -395,12 +400,18 @@ async function playCurrent() {
   ls.set(K.player, player);
   setMediaSession(t);
   renderPlayerState();
-  try { await playTrack(t, 'player'); } catch (e) { toast(e.message, 'error'); }
+  const files = trackFiles(t);
+  try { await playTrack(files[Math.min(player.frag || 0, files.length - 1)], 'player'); } catch (e) { toast(e.message, 'error'); }
   renderPlayerState();
 }
 
 function step(d) {
   if (!player) return;
+  // utwór z kilku plików: najpierw kolejny / poprzedni fragment
+  const t = currentTrack();
+  const fr = (player.frag || 0) + d;
+  if (t && fr >= 0 && fr < trackFiles(t).length) { player.frag = fr; playCurrent(); return; }
+  player.frag = 0;
   const n = player.queue.length;
   const i = player.index + d;
   if (i < 0) { audio.currentTime = 0; return; }
@@ -409,13 +420,21 @@ function step(d) {
   playCurrent();
 }
 
-audio.addEventListener('ended', () => { if (owner === 'player') step(1); else if (owner === 'quiz') updateFragUi(); });
+audio.addEventListener('ended', () => {
+  if (owner === 'player') step(1);
+  else if (owner === 'quiz') {
+    // cały utwór z kilku plików – po pierwszym od razu następny
+    const t = quizTrack();
+    if (t && !quiz.fragment && quizFrag + 1 < trackFiles(t).length) playFragment(quizFrag + 1);
+    else updateFragUi();
+  }
+});
 
 function setMediaSession(t) {
   if (!('mediaSession' in navigator)) return;
   try {
     navigator.mediaSession.metadata = new MediaMetadata({
-      title: t.title + (t.part ? `, ${t.part}` : ''), artist: t.author, album: playerSet ? playerSet.name : 'Słuchawki',
+      title: t.title + (t.part ? `, ${t.part}` : '') + fragText(t), artist: t.author, album: playerSet ? playerSet.name : 'Słuchawki',
       artwork: [{ src: 'icons/icon-512.png', sizes: '512x512', type: 'image/png' }],
     });
     navigator.mediaSession.setActionHandler('nexttrack', () => step(1));
@@ -431,7 +450,7 @@ async function playerView() {
   await refreshDownloaded();
   const items = player.queue.map((id, i) => {
     const t = playerSet.tracks.find((x) => x.id === id);
-    return t ? `<li><button data-i="${i}"><span class="qn">${i + 1}</span><span>${esc(trackLabel(t))}</span>${downloaded.has(t.fileId) ? '<span class="dl" title="pobrany">⇩</span>' : ''}</button></li>` : '';
+    return t ? `<li><button data-i="${i}"><span class="qn">${i + 1}</span><span>${esc(trackLabel(t))}${filesBadge(t)}</span>${isDownloaded(t) ? '<span class="dl" title="pobrany">⇩</span>' : ''}</button></li>` : '';
   }).join('');
   render(`
     <div class="player card">
@@ -455,10 +474,15 @@ async function playerView() {
     else playCurrent();
   };
   $('#p-seek').oninput = (e) => { if (audio.duration) audio.currentTime = (e.target.value / 1000) * audio.duration; };
-  $$('.queue button').forEach((b) => b.addEventListener('click', () => { player.index = Number(b.dataset.i); playCurrent(); }));
+  $$('.queue button').forEach((b) => b.addEventListener('click', () => { player.index = Number(b.dataset.i); player.frag = 0; playCurrent(); }));
   renderPlayerState();
 }
 
+/** „ (fragment 1 z 2)” dla utworu z kilku plików */
+function fragText(t) {
+  const n = trackFiles(t).length;
+  return n > 1 ? ` (fragment ${Math.min(player.frag || 0, n - 1) + 1} z ${n})` : '';
+}
 const fmtT = (s) => (Number.isFinite(s) ? `${Math.floor(s / 60)}:${String(Math.floor(s % 60)).padStart(2, '0')}` : '0:00');
 function renderPlayerState() {
   updateMini();
@@ -469,7 +493,10 @@ function renderPlayerState() {
   $('#p-title').textContent = t.title + (t.part ? `, ${t.part}` : '');
   $('#p-note').hidden = !t.note;
   $('#p-note').textContent = t.note ? `Uwagi: ${t.note}` : '';
-  $('#p-pos').textContent = `${player.index + 1} / ${player.queue.length}`;
+  const nf = trackFiles(t).length;
+  $('#p-pos').textContent = nf > 1
+    ? `Pozycja ${player.index + 1} z ${player.queue.length} · fragment ${Math.min(player.frag || 0, nf - 1) + 1} z ${nf}`
+    : `${player.index + 1} / ${player.queue.length}`;
   const playing = owner === 'player' && !audio.paused;
   $('#p-play').textContent = playing ? '⏸' : '▶';
   $('#p-play').setAttribute('aria-label', playing ? 'Pauza' : 'Odtwórz');
@@ -496,7 +523,7 @@ function updateMini() {
   m.hidden = !show;
   document.body.classList.toggle('has-mini', !!show);
   if (!show) return;
-  $('#mini-title').textContent = trackLabel(t);
+  $('#mini-title').textContent = trackLabel(t) + fragText(t);
   $('#mini-play').textContent = audio.paused ? '▶' : '⏸';
 }
 $('#mini-play').addEventListener('click', () => { if (audio.paused) audio.play().catch(() => undefined); else audio.pause(); });
@@ -582,7 +609,7 @@ function renderQuestion(autoplay) {
     ${body}
     <button class="btn ghost wide" id="q-end">Zakończ quiz</button>
   `);
-  $('#q-restart').addEventListener('click', () => playFragment());
+  $('#q-restart').addEventListener('click', () => playFragment(0));
   $('#q-seek').addEventListener('input', (e) => {
     if (owner !== 'quiz' || !audio.duration) return;
     const max = quiz.fragment ? Math.min(quiz.fragment, audio.duration) : audio.duration;
@@ -620,12 +647,14 @@ function renderQuestion(autoplay) {
 }
 
 let quizLoaded = null; // id utworu załadowanego w odtwarzaczu quizu
-async function playFragment() {
+let quizFrag = 0; // który plik utworu (utwór z kilku plików)
+async function playFragment(frag = 0) {
   const t = quizTrack();
   if (!t) return;
+  quizFrag = Math.min(frag, trackFiles(t).length - 1);
   try {
     $('#q-status').textContent = 'Ładowanie…';
-    const ok = await playTrack(t, 'quiz');
+    const ok = await playTrack(trackFiles(t)[quizFrag], 'quiz');
     quizLoaded = ok ? t.id : null;
   } catch (e) { toast(e.message, 'error'); quizLoaded = null; }
   updateFragUi();
@@ -634,6 +663,7 @@ function quizToggle() {
   const t = quizTrack();
   if (owner === 'quiz' && t && quizLoaded === t.id && audio.src) {
     if (!audio.paused) { audio.pause(); return; }
+    if (audio.ended && quizFrag > 0) { playFragment(0); return; }
     const limit = quiz.fragment || Infinity;
     if (audio.ended || audio.currentTime >= limit) audio.currentTime = 0;
     audio.play().catch(() => undefined);
@@ -658,9 +688,11 @@ function updateFragUi() {
   $('#q-play').setAttribute('aria-label', playing ? 'Pauza' : 'Odtwórz');
   $('#q-play').onclick = quizToggle;
   const done = mine && (audio.ended || (quiz.fragment && cur >= quiz.fragment));
+  const nf = trackFiles(quizTrack() || {}).length;
+  const fr = mine && nf > 1 && !quiz.fragment ? `Fragment ${quizFrag + 1} z ${nf} · ` : '';
   $('#q-status').textContent = !mine ? (quiz.fragment ? `Pierwsze ${quiz.fragment} s utworu` : 'Cały utwór – zatrzymaj, kiedy chcesz')
     : done ? 'Koniec – ▶ posłuchaj jeszcze raz'
-      : `${fmtT(cur)} / ${max ? fmtT(max) : '…'}${playing ? '' : ' · pauza'}`;
+      : `${fr}${fmtT(cur)} / ${max ? fmtT(max) : '…'}${playing ? '' : ' · pauza'}`;
 }
 audio.addEventListener('pause', () => { if (owner === 'quiz') updateFragUi(); });
 audio.addEventListener('play', () => { if (owner === 'quiz') updateFragUi(); });
@@ -769,7 +801,7 @@ async function resultView() {
 }
 
 // ---------- tabela utworów (dodawanie i edycja) ----------
-// model: { rows:[{key,id?,author,title,part,fileId,score,manual}], files:[{id,name,size,mimeType,resourceKey}], blocked:Set(fileId) }
+// model: { rows:[{key,id?,author,title,part,note?,fileId,extra?:[fileId],score,manual}], files:[{id,name,size,mimeType,resourceKey}], blocked:Set(fileId) }
 function rowRanking(model, row) {
   return model.files
     .filter((f) => !model.blocked.has(f.id))
@@ -780,6 +812,7 @@ function rowRanking(model, row) {
 function autoMatch(model, all) {
   const rows = model.rows.filter((r) => all || !r.manual);
   const taken = new Set(model.rows.filter((r) => !all && r.manual && r.fileId).map((r) => r.fileId));
+  for (const r of model.rows) for (const id of r.extra || []) taken.add(id); // kolejne fragmenty zostają przy swoich utworach
   const files = model.files.filter((f) => !taken.has(f.id) && !model.blocked.has(f.id));
   const { result } = matchAll(rows, files);
   rows.forEach((r, i) => { r.fileId = result[i].fileId; r.score = result[i].score; if (all) r.manual = false; });
@@ -799,11 +832,25 @@ function fixWordsFromFiles(model, rows) {
   if (n) toast(`Poprawiono ${pl(n, 'słowo', 'słowa', 'słów')} według nazw plików – sprawdź listę.`, 'good');
 }
 
+/** dodaje plik jako kolejny fragment utworu; fragmenty ułożone według nazw plików */
+function addFragment(model, r, id) {
+  const name = (x) => (model.files.find((f) => f.id === x) || {}).name || '';
+  const ids = sortFragments([...new Set([r.fileId, ...(r.extra || []), id].filter(Boolean))], name);
+  r.fileId = ids[0];
+  r.extra = ids.slice(1);
+  r.manual = true;
+  r.score = matchScore(r, name(r.fileId));
+}
+
 function renderTable(root, model, onChange) {
   const counts = {};
-  for (const r of model.rows) if (r.fileId) counts[r.fileId] = (counts[r.fileId] || 0) + 1;
-  const used = new Set(model.rows.map((r) => r.fileId).filter(Boolean));
+  for (const r of model.rows) for (const id of [r.fileId, ...(r.extra || [])]) if (id) counts[id] = (counts[id] || 0) + 1;
+  const used = new Set(Object.keys(counts));
   const unused = model.files.filter((f) => !used.has(f.id) && !model.blocked.has(f.id));
+  const nameOf = (id) => (model.files.find((f) => f.id === id) || {}).name || '(plik usunięty z folderu)';
+  // pliki prawie identyczne z przypisanymi – może utwór jest nagrany w kilku plikach
+  const sugg = unused.length ? fragmentSuggestions(model.rows, unused, model.files) : new Map();
+  const nSugg = [...sugg.values()].reduce((a, l) => a + l.length, 0);
   const nHigh = model.rows.filter((r) => r.fileId && (r.manual || confidence(r.score) === 'high')).length;
   const nNone = model.rows.filter((r) => !r.fileId).length;
   const rowHtml = (r, i) => {
@@ -811,8 +858,17 @@ function renderTable(root, model, onChange) {
     const rank = model.files.length ? rowRanking(model, r) : [];
     const opts = rank.map(({ f, s }) => `<option value="${esc(f.id)}" ${f.id === r.fileId ? 'selected' : ''}>${s >= MATCH_MIN ? '★ ' : ''}${esc(f.name)}</option>`).join('');
     const dup = r.fileId && counts[r.fileId] > 1;
+    const extra = r.extra || [];
+    const fragHtml = extra.map((id, k) => `<div class="tfile tfrag"><span class="fragn">Fragment ${k + 2}:</span><span class="fname">${esc(nameOf(id))}</span>
+          <button type="button" class="round sm" data-act="listen" data-id="${esc(id)}" aria-label="Posłuchaj fragmentu ${k + 2}">▶</button>
+          <button type="button" class="round sm" data-act="rm-frag" data-id="${esc(id)}" aria-label="Usuń fragment ${k + 2}">✕</button></div>`).join('');
+    const hint = (sugg.get(i) || []).map((f) => `<div class="frag-hint"><span>W folderze jest prawie taki sam plik: <b>${esc(f.name)}</b>. Może ten utwór jest nagrany w kilku plikach?</span>
+          <span class="frag-btns"><button type="button" class="btn sm primary" data-act="add-frag" data-id="${esc(f.id)}">＋ Dodaj jako fragment ${extra.length + 2}</button>
+          <button type="button" class="round sm" data-act="listen" data-id="${esc(f.id)}" aria-label="Posłuchaj">▶</button></span></div>`).join('');
+    const pick = r.fileId && unused.length ? `<select data-act="pick-frag" class="pick-frag" aria-label="Dodaj kolejny plik tego utworu">
+          <option value="">＋ kolejny plik tego utworu (fragment ${extra.length + 2})…</option>${unused.map((f) => `<option value="${esc(f.id)}">${esc(f.name)}</option>`).join('')}</select>` : '';
     const badge = { none: 'brak pliku', manual: 'wybrany ręcznie', high: `pewne ${Math.round(r.score * 100)}%`, mid: `sprawdź ${Math.round(r.score * 100)}%`, low: `wątpliwe ${Math.round(r.score * 100)}%` }[conf];
-    return `<div class="trow conf-${conf}${dup ? ' dup' : ''}" data-i="${i}">
+    return `<div class="trow conf-${conf}${dup ? ' dup' : ''}${sugg.has(i) ? ' has-frag-hint' : ''}" data-i="${i}">
       <div class="tnum">${i + 1}</div>
       <div class="tfields">
         <input data-f="author" placeholder="Autor" value="${esc(r.author)}" aria-label="Autor">
@@ -823,7 +879,9 @@ function renderTable(root, model, onChange) {
           <select data-f="fileId" aria-label="Plik nagrania"><option value="">— brak pliku —</option>${opts}</select>
           <button type="button" class="round sm" data-act="listen" aria-label="Posłuchaj" ${r.fileId ? '' : 'disabled'}>▶</button>
         </div>
-        <div class="tmeta"><span class="badge">${badge}</span>${dup ? ' <span class="warn">ten sam plik w kilku wierszach</span>' : ''}</div>
+        ${fragHtml}${hint}
+        <div class="tmeta"><span class="badge">${badge}</span>${extra.length ? ` <span class="badge">${extra.length + 1} pliki</span>` : ''}${dup ? ' <span class="warn">ten sam plik w kilku wierszach</span>' : ''}</div>
+        ${pick}
       </div>
       <div class="tactions">
         <button type="button" data-act="up" aria-label="W górę" ${i ? '' : 'disabled'}>↑</button>
@@ -834,6 +892,7 @@ function renderTable(root, model, onChange) {
   };
   root.innerHTML = `
     ${model.rows.length ? `<p class="summary">${utwory(model.rows.length)} · <span class="ok">${nHigh} pewnych</span> · <span class="warn">${model.rows.length - nHigh - nNone} do sprawdzenia</span> · <span class="bad">${nNone} bez pliku</span></p>` : ''}
+    ${nSugg ? `<div class="frag-alert">⚠ W folderze jest więcej plików (${model.files.length - model.blocked.size}) niż utworów na liście (${model.rows.length}), a ${pl(nSugg, 'plik prawie nie różni', 'pliki prawie nie różnią', 'plików prawie nie różni')} się nazwą od już przypisanych. Możliwe, że utwór jest nagrany w kilku plikach – sprawdź wiersze oznaczone ⚠ (▶ – posłuchaj).</div>` : ''}
     <div class="tlist">${model.rows.map(rowHtml).join('')}</div>
     <div class="grid2">
       <button type="button" class="btn" data-act="add">＋ Dodaj wiersz</button>
@@ -854,8 +913,11 @@ function renderTable(root, model, onChange) {
     const tr = el.closest('.trow');
     if (!tr) return;
     const r = model.rows[Number(tr.dataset.i)];
+    if (el.dataset.act === 'pick-frag') { if (el.value) addFragment(model, r, el.value); return rerender(); }
     if (el.dataset.f === 'fileId') {
       r.fileId = el.value || null;
+      if (r.extra) r.extra = r.extra.filter((x) => x !== r.fileId);
+      if (!r.fileId && r.extra && r.extra.length) r.fileId = r.extra.shift();
       r.manual = true;
       const f = model.files.find((x) => x.id === r.fileId);
       r.score = f ? matchScore(r, f.name) : 0;
@@ -896,9 +958,16 @@ function renderTable(root, model, onChange) {
       if (!confirm('Dopasować wszystkie wiersze automatycznie? Ręczne wybory zostaną zastąpione.')) return;
       autoMatch(model, true);
       rerender();
+    } else if (act === 'add-frag') {
+      addFragment(model, model.rows[i], b.dataset.id);
+      rerender();
+    } else if (act === 'rm-frag') {
+      const r = model.rows[i];
+      r.extra = (r.extra || []).filter((x) => x !== b.dataset.id);
+      rerender();
     } else if (act === 'listen') {
       const r = model.rows[i];
-      const f = model.files.find((x) => x.id === r.fileId);
+      const f = model.files.find((x) => x.id === (b.dataset.id || r.fileId));
       if (!f) return;
       if (owner === 'preview' && !audio.paused && b.classList.contains('playing')) { stopAudio(); b.classList.remove('playing'); b.textContent = '▶'; return; }
       $$('[data-act="listen"].playing', root).forEach((x) => { x.classList.remove('playing'); x.textContent = '▶'; });
@@ -931,7 +1000,7 @@ async function addView(setId) {
   const updateBlocked = () => {
     model.blocked = new Set();
     const s = sets.find((x) => x.id === draft.setId);
-    if (draft.target === 'existing' && s) for (const t of s.tracks) model.blocked.add(t.fileId);
+    if (draft.target === 'existing' && s) for (const f of s.tracks.flatMap(trackFiles)) model.blocked.add(f.fileId);
   };
   updateBlocked();
   render(`
@@ -987,7 +1056,10 @@ async function addView(setId) {
       const f = draft.folders.splice(Number(b.dataset.rm), 1)[0];
       const ids = new Set(f.fileIds);
       draft.files = model.files = model.files.filter((x) => !ids.has(x.id));
-      for (const r of model.rows) if (r.fileId && ids.has(r.fileId)) { r.fileId = null; r.score = 0; r.manual = false; }
+      for (const r of model.rows) {
+        if (r.extra) r.extra = r.extra.filter((x) => !ids.has(x));
+        if (r.fileId && ids.has(r.fileId)) { r.fileId = (r.extra && r.extra.shift()) || null; r.score = 0; r.manual = !!r.fileId; }
+      }
       renderFolders();
       redraw();
     }));
@@ -1111,7 +1183,7 @@ async function addView(setId) {
     const byId = new Map(model.files.map((f) => [f.id, f]));
     for (const r of withFile) {
       const f = byId.get(r.fileId) || {};
-      set.tracks.push({ id: uid(), author: r.author.trim(), title: r.title.trim(), part: (r.part || '').trim(), ...noteOf(r), fileId: r.fileId, fileName: f.name || '', size: f.size || 0, mimeType: f.mimeType || '', resourceKey: f.resourceKey || '' });
+      set.tracks.push({ id: uid(), author: r.author.trim(), title: r.title.trim(), part: (r.part || '').trim(), ...noteOf(r), fileId: r.fileId, fileName: f.name || '', size: f.size || 0, mimeType: f.mimeType || '', resourceKey: f.resourceKey || '', ...extraOf(r, byId) });
     }
     const fileIds = new Set(set.files.map((f) => f.id));
     for (const f of model.files) if (!fileIds.has(f.id)) set.files.push(f);
@@ -1135,7 +1207,7 @@ async function editView(id) {
   }
   setHeader('Edycja zbioru', `#/zbior/${id}`);
   const model = {
-    rows: set.tracks.map((t) => ({ key: t.id, id: t.id, author: t.author, title: t.title, part: t.part, note: t.note || '', fileId: t.fileId, score: 1, manual: true })),
+    rows: set.tracks.map((t) => ({ key: t.id, id: t.id, author: t.author, title: t.title, part: t.part, note: t.note || '', fileId: t.fileId, extra: (t.extra || []).map((f) => f.fileId), score: 1, manual: true })),
     files: set.files.slice(),
     blocked: new Set(),
   };
@@ -1200,7 +1272,7 @@ async function editView(id) {
     set.name = name;
     set.tracks = rows.filter((r) => r.fileId).map((r) => {
       const f = byId.get(r.fileId) || {};
-      return { id: r.id || uid(), author: r.author.trim(), title: r.title.trim(), part: (r.part || '').trim(), ...noteOf(r), fileId: r.fileId, fileName: f.name || '', size: f.size || 0, mimeType: f.mimeType || '', resourceKey: f.resourceKey || '' };
+      return { id: r.id || uid(), author: r.author.trim(), title: r.title.trim(), part: (r.part || '').trim(), ...noteOf(r), fileId: r.fileId, fileName: f.name || '', size: f.size || 0, mimeType: f.mimeType || '', resourceKey: f.resourceKey || '', ...extraOf(r, byId) };
     });
     set.files = model.files;
     await db.putSet(set);
@@ -1261,6 +1333,12 @@ async function settingsView() {
 }
 
 // ---------- udostępnianie, eksport, import ----------
+/** { extra:[plik] } tylko gdy utwór ma kolejne fragmenty (pliki) */
+function extraOf(r, byId) {
+  const ids = (r.extra || []).filter((id) => id && id !== r.fileId);
+  if (!ids.length) return {};
+  return { extra: ids.map((id) => { const f = byId.get(id) || {}; return { fileId: id, fileName: f.name || '', size: f.size || 0, mimeType: f.mimeType || '', resourceKey: f.resourceKey || '' }; }) };
+}
 /** { note } tylko gdy uwagi są niepuste */
 function noteOf(r) {
   const n = typeof r.note === 'string' ? r.note.trim() : '';
@@ -1269,8 +1347,12 @@ function noteOf(r) {
 function packSet(set) {
   return {
     app: 'sluchawki', v: 1, id: set.id, name: set.name, folders: set.folders, exportedAt: Date.now(),
-    // 9. pole (uwagi) tylko gdy są – starsze pliki i linki zostają bez zmian
-    tracks: set.tracks.map((t) => [t.author, t.title, t.part, t.fileId, t.fileName, t.size, t.mimeType, t.resourceKey || '', ...(t.note ? [t.note] : [])]),
+    // 9. pole (uwagi) i 10. (kolejne pliki utworu) tylko gdy są – starsze pliki i linki zostają bez zmian
+    tracks: set.tracks.map((t) => {
+      const a = [t.author, t.title, t.part, t.fileId, t.fileName, t.size, t.mimeType, t.resourceKey || ''];
+      const ex = t.extra && t.extra.length ? [t.extra.map((f) => [f.fileId, f.fileName, f.size, f.mimeType, f.resourceKey || ''])] : [];
+      return t.note || ex.length ? [...a, t.note || '', ...ex] : a;
+    }),
   };
 }
 function unpackSet(d) {
@@ -1278,9 +1360,15 @@ function unpackSet(d) {
   return {
     id: typeof d.id === 'string' && /^[\w-]{4,80}$/.test(d.id) ? d.id : '',
     name: String(d.name || 'Zbiór'), folders: Array.isArray(d.folders) ? d.folders : [],
-    tracks: d.tracks.map((a) => ({ id: uid(), author: a[0] || '', title: a[1] || '', part: a[2] || '', fileId: a[3], fileName: a[4] || '', size: a[5] || 0, mimeType: a[6] || '', resourceKey: a[7] || '', ...noteOf({ note: a[8] }) }))
+    tracks: d.tracks.map((a) => ({ id: uid(), author: a[0] || '', title: a[1] || '', part: a[2] || '', fileId: a[3], fileName: a[4] || '', size: a[5] || 0, mimeType: a[6] || '', resourceKey: a[7] || '', ...noteOf({ note: a[8] }), ...unpackExtra(a[9]) }))
       .filter((t) => typeof t.fileId === 'string' && t.fileId),
   };
+}
+function unpackExtra(x) {
+  if (!Array.isArray(x)) return {};
+  const extra = x.filter((f) => Array.isArray(f) && typeof f[0] === 'string' && f[0])
+    .map((f) => ({ fileId: f[0], fileName: f[1] || '', size: f[2] || 0, mimeType: f[3] || '', resourceKey: f[4] || '' }));
+  return extra.length ? { extra } : {};
 }
 /** plik/link może zawierać jeden zbiór albo kilka ({ app, sets: [...] }) */
 function unpackAny(d) {
@@ -1340,7 +1428,7 @@ async function saveImported(s, { lib = null, ask = true } = {}) {
   const sets = await db.listSets();
   let same = (s.id && sets.find((x) => x.id === s.id)) || (lib && sets.find((x) => x.lib && x.lib.file === lib.file)) || sets.find((x) => x.name === s.name);
   if (same && same.lib && !lib) same = null; // zbiór z biblioteki zmienia tylko aktualizacja z biblioteki
-  const files = s.tracks.map((t) => ({ id: t.fileId, name: t.fileName, size: t.size, mimeType: t.mimeType, resourceKey: t.resourceKey }));
+  const files = s.tracks.flatMap(trackFiles).map((t) => ({ id: t.fileId, name: t.fileName, size: t.size, mimeType: t.mimeType, resourceKey: t.resourceKey }));
   let set = null;
   if (same) {
     const replace = !ask || confirm(`Masz już zbiór „${same.name}”. Zastąpić go importowanym (${utwory(s.tracks.length)})?\n„Anuluj” zapisze go jako osobny zbiór.`);

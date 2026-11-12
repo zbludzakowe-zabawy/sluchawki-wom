@@ -290,3 +290,24 @@ test('fixFromFileName – poprawki według nazwy pliku', async () => {
   const c = { author: 'Chopin', title: 'Mazurek a-moll', part: '' };
   assert.equal(fixFromFileName(c, 'Fryderyk Chopin - Mazurek op. 68.mp3'), 0);
 });
+
+test('utwór z kilku plików – podpowiedź podobnych plików', async () => {
+  const { fragmentSuggestions, nameSimilarity, sortFragments } = await import('../js/textmatch.js');
+  const files = [
+    { id: 'a', name: 'Jan Sebastian Bach - Pasja według św. Mateusza BWV 244 - cz. 1.mp3' },
+    { id: 'b', name: 'Jan Sebastian Bach - Pasja według św. Mateusza BWV 244 - cz. 2.mp3' },
+    { id: 'c', name: 'Jan Sebastian Bach - Toccata i fuga d-moll.mp3' },
+    { id: 'd', name: 'Antonio Vivaldi - Cztery pory roku - Jesień.mp3' },
+    { id: 'e', name: 'Georg Friedrich Händel - Muzyka sztucznych ogni - cz. 1. Uwertura.mp3' },
+  ];
+  assert.ok(nameSimilarity(files[0].name, files[1].name) > 0.95);
+  assert.ok(nameSimilarity(files[0].name, files[2].name) < 0.85);
+  // Pasja dopasowana do „cz. 2”, „cz. 1” bez przypisania; Händel bez pary na liście
+  const rows = [{ fileId: 'b' }, { fileId: 'c' }, { fileId: 'd' }];
+  const s = fragmentSuggestions(rows, [files[0], files[4]], files);
+  assert.deepEqual([...s.keys()], [0]);
+  assert.deepEqual(s.get(0).map((f) => f.id), ['a']);
+  const name = (id) => files.find((f) => f.id === id).name;
+  assert.deepEqual(sortFragments(['b', 'a'], name), ['a', 'b']);
+  assert.deepEqual(sortFragments(['x10', 'x2'], (id) => `Utwór ${id.slice(1)}.mp3`), ['x2', 'x10']);
+});

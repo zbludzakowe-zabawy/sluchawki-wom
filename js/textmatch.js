@@ -723,3 +723,45 @@ export function fixFromFileName(row, fileName) {
   }
   return changed;
 }
+
+// ---------- utwór z kilku plików (fragmentów) ----------
+
+/** podobieństwo nazw plików: 1 = identyczne; „… cz. 1.mp3” i „… cz. 2.mp3” ≈ 0.98 */
+export function nameSimilarity(a, b) {
+  const x = fold(cleanFileName(a)).replace(/\s+/g, ' ').trim();
+  const y = fold(cleanFileName(b)).replace(/\s+/g, ' ').trim();
+  if (!x || !y) return 0;
+  if (Math.abs(x.length - y.length) > Math.max(x.length, y.length) * 0.2) return 0;
+  return 1 - typoDistance(x, y) / Math.max(x.length, y.length);
+}
+export const FRAGMENT_SIM = 0.85;
+
+/**
+ * pliki bez przypisania, które prawie nie różnią się nazwą od pliku już przypisanego do utworu –
+ * prawdopodobnie kolejne fragmenty tego samego utworu (np. nagranie podzielone na dwa pliki).
+ * rows: [{ fileId, extra:[fileId] }], unused: [{id, name}], files: wszystkie pliki → Map(indeks wiersza → [plik])
+ */
+export function fragmentSuggestions(rows, unused, files) {
+  const name = new Map(files.map((f) => [f.id, f.name]));
+  const out = new Map();
+  for (const u of unused) {
+    let best = -1;
+    let bestS = FRAGMENT_SIM;
+    rows.forEach((r, i) => {
+      for (const id of [r.fileId, ...(r.extra || [])]) {
+        if (!id || !name.has(id)) continue;
+        const s = nameSimilarity(name.get(id), u.name);
+        if (s >= bestS) { bestS = s; best = i; }
+      }
+    });
+    if (best < 0) continue;
+    if (!out.has(best)) out.set(best, []);
+    out.get(best).push(u);
+  }
+  return out;
+}
+
+/** kolejność fragmentów: według nazwy pliku („cz. 1” przed „cz. 2”, „2” przed „10”) */
+export function sortFragments(ids, nameOf) {
+  return ids.slice().sort((a, b) => String(nameOf(a)).localeCompare(String(nameOf(b)), 'pl', { numeric: true }));
+}

@@ -337,3 +337,13 @@ body.has-mini .app-banner { bottom: calc(84px + env(safe-area-inset-bottom)); }
 /* uwagi do utworu (np. czerwony dopisek na liście) */
 .note { display: block; color: var(--bad); font-size: .88rem; font-style: italic; overflow-wrap: anywhere; }
 .tfields input.note-input { color: var(--bad); font-style: italic; }
+
+/* utwór nagrany w kilku plikach (fragmenty) */
+.tfrag { flex-wrap: wrap; align-items: center; gap: 6px 8px; border-top: 1px dashed var(--line); padding-top: 6px; }
+.tfrag .fragn { flex: 1; font-weight: 600; font-size: .9rem; }
+.tfrag .fname { order: 3; flex-basis: 100%; overflow-wrap: anywhere; font-size: .88rem; color: var(--muted); }
+.frag-hint, .frag-alert { border: 2px dashed var(--warn); background: var(--warn-bg); color: var(--ink); border-radius: 10px; padding: 8px 10px; font-size: .92rem; overflow-wrap: anywhere; }
+.frag-hint { display: flex; flex-direction: column; gap: 6px; }
+.frag-hint .frag-btns { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+.frag-alert { margin: 0 0 10px; font-weight: 600; }
+.tfields select.pick-frag { font-size: .9rem; min-height: 36px; }
