@@ -105,3 +105,27 @@ export async function download(file, onProgress) {
   }
   return new Blob(chunks, { type: res.headers.get('Content-Type') || file.mimeType || 'audio/mpeg' });
 }
+
+/** z linku do pliku na Dysku („/file/d/ID/…”, „open?id=ID”, „uc?id=ID”) wyciąga { id, resourceKey } */
+export function parseFileLink(link) {
+  const s = String(link || '').trim();
+  if (!/drive\.google\.com|docs\.google\.com/.test(s) || /\/folders\//.test(s)) return null;
+  const id = (s.match(/\/(?:file\/)?d\/([a-zA-Z0-9_-]{10,})/) || s.match(/[?&]id=([a-zA-Z0-9_-]{10,})/) || [])[1];
+  const resourceKey = (s.match(/[?&]resourcekey=([a-zA-Z0-9_-]+)/i) || [])[1] || '';
+  return id ? { id, resourceKey } : null;
+}
+
+/** treść pliku z Dysku (udostępnionego „każdemu, kto ma link”) jako tekst */
+export async function fileText(file) {
+  const key = apiKey();
+  if (!key) throw new DriveError('Brak klucza Google API – wpisz go w Ustawieniach.', 'nokey');
+  let res;
+  try {
+    res = await fetch(`${API}/${file.id}?alt=media&supportsAllDrives=true&key=${encodeURIComponent(key)}`, { headers: headers([file]) });
+  } catch {
+    throw new DriveError('Brak połączenia z Dyskiem Google. Sprawdź internet.', 'offline');
+  }
+  if (res.status === 404) throw new DriveError('Nie znaleziono pliku. Sprawdź link i czy plik jest udostępniony „Każdy, kto ma link”.', 'notfound');
+  if (!res.ok) throw new DriveError(`Dysk Google odmówił dostępu do pliku (${res.status}). Sprawdź, czy plik jest udostępniony „Każdy, kto ma link”.`, 'denied');
+  return res.text();
+}
