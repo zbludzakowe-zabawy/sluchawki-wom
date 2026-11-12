@@ -160,6 +160,9 @@ test('quiz tekstowy – tonacje: wielka litera = dur, mała = moll', () => {
   assert.equal(checkTitle('Polonez op. 40 nr 1 A-dur', t), true);
   assert.deepEqual(explainField('title', 'Polonez op. 40 nr 1', t), [{ kind: 'missing', fix: 'A-dur' }]);
   assert.equal(checkTitle('Na Boże Narodzenie', 'Concerto Grosso g-moll „Na Boże Narodzenie” op. 6 nr 8'), true); // sam dopisek
+  assert.deepEqual(explainField('title', 'Na Boże Narodzenie', 'Concerto Grosso g-moll „Na Boże Narodzenie” op. 6 nr 8'),
+    [{ kind: 'keymissing', fix: 'g-moll' }]); // zaliczone, ale z przypomnieniem o tonacji
+  assert.deepEqual(explainField('title', 'Concerto grosso g op. 6 nr 8', 'Concerto Grosso g-moll „Na Boże Narodzenie” op. 6 nr 8'), []);
   assert.equal(checkPart('1', 'tom 1 - Preludium C-dur'), true); // sam numer części
   assert.equal(checkPart('Preludium', 'tom 1 - Preludium C-dur'), false);
   assert.equal(checkTitle('Polonez a op. 40 nr 1', t), false); // „a” = a-moll

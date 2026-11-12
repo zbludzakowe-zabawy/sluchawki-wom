@@ -413,13 +413,14 @@ function wordTokens(text, { keys, ...opts }) {
 }
 
 /**
- * Porównanie słowo po słowie. Zwraca listę uwag:
+ * Porównanie słowo po słowie. Zwraca listę uwag (+ {kind:'keymissing', fix} – brak tonacji, ale pole zaliczone przez dopisek):
  * {kind:'typo', given, fix} – literówka (zaliczona), {kind:'wrong', given, fix?} – złe słowo / zła liczba,
  * {kind:'missing', fix} – brakuje słowa lub liczby, {kind:'empty'} – puste pole, {kind:'nopart'} – utwór nie ma części.
  */
 export function explainField(field, answer, correct) {
   const roman = field === 'part';
   const keys = field !== 'author';
+  const full = correct;
   const A = wordTokens(answer, { roman, keys });
   if (field === 'title') {
     // porównujemy z wariantem tytułu najbliższym odpowiedzi (np. bez dopisku w cudzysłowie)
@@ -470,6 +471,13 @@ export function explainField(field, answer, correct) {
     if (field === 'part' && (isNum(c.tok) ? !gaveNums && gaveWords : gaveNums && !gaveWords)) return;
     if (!out.some((o) => o.kind === 'missing' && o.fix === c.word)) out.push({ kind: 'missing', fix: c.word });
   });
+  if (field === 'title') {
+    // zaliczony sam dopisek („Na Boże Narodzenie”) – i tak przypominamy o tonacji z pełnego tytułu
+    const have = new Set([...A, ...C].map((x) => x.tok));
+    for (const k of wordTokens(full, { keys: true })) {
+      if (isKey(k.tok) && !have.has(k.tok)) { have.add(k.tok); out.push({ kind: 'keymissing', fix: k.word }); }
+    }
+  }
   return out;
 }
 
