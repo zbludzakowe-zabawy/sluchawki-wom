@@ -286,6 +286,10 @@ test('fixFromFileName – poprawki według nazwy pliku', async () => {
   const k = { author: 'Ludwig van Beethoven', title: 'Kwartet smyczkowy nr 7 F-dur op. 59 nr 1 „Bazumowski”', part: 'cz. 1' };
   fixFromFileName(k, 'Ludwig van Beethoven - Kwartet smyczkowy nr 7 F-dur op. 59 nr 1 Razumowski - cz. 1.mp3');
   assert.equal(k.title, 'Kwartet smyczkowy nr 7 F-dur op. 59 nr 1 „Razumowski”');
+  // polskie znaki z listy zostają, gdy w nazwie pliku ich brak
+  const j = { author: 'Adam Jarzębski', title: 'Tamburetta', part: '' };
+  assert.equal(fixFromFileName(j, 'Adam Jarzebski - Tamburetta.mp3'), 0);
+  assert.equal(j.author, 'Adam Jarzębski');
   // słowa wyraźnie inne (nie literówka) zostają
   const c = { author: 'Chopin', title: 'Mazurek a-moll', part: '' };
   assert.equal(fixFromFileName(c, 'Fryderyk Chopin - Mazurek op. 68.mp3'), 0);

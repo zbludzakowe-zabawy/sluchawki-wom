@@ -41,7 +41,7 @@ Aplikacja do nauki rozpoznawania utworów ze słuchu. Działa w przeglądarce i 
   3. Po publikacji (około minuty) zbiór pojawi się w bibliotece. Jeśli później podmienisz plik, użytkownicy zobaczą przy nim **↻ Aktualizuj**.
 - Spis biblioteki (`zbiory/index.json`) tworzy się sam przy publikacji (`tools/build-library.mjs`).
 - Zbiorów z biblioteki **nie można edytować** (🔒), żeby wszyscy uczyli się z tej samej wersji. Przycisk **⧉ Własna kopia** tworzy zwykły zbiór „… (moja kopia)”, który można dowolnie zmieniać. Zbiór z biblioteki zmienia się tylko przez **↻ Aktualizuj**, po zmianie pliku w repozytorium.
-- Wbudowane zbiory: `zbiory/kanon-klasa-5-nr-1.json` – *Kanon klasa 5 nr 1* (15 utworów).
+- Wbudowane zbiory: `zbiory/kanon-klasa-5-nr-1.json` – *Kanon klasa 5 nr 1* (15 utworów); `zbiory/kanon-klasa-6-cz1.json` – *Kanon klasa 6 cz1* (18 utworów, Pasja według św. Mateusza w 2 plikach).
 
 ## Klucz Google API (jednorazowo)
 

@@ -1,0 +1,207 @@
+{
+ "app": "sluchawki",
+ "v": 1,
+ "id": "26f19c83-5176-4861-b8a1-2b76706a5c45",
+ "name": "Kanon klasa 6 cz1",
+ "folders": [
+  {
+   "id": "1iBOo7WM4Ocs2Kw4mhiakhuYoO0Wl6mZv",
+   "resourceKey": "",
+   "name": "WOM_k6s1"
+  }
+ ],
+ "exportedAt": 1794488393122,
+ "tracks": [
+  [
+   "Anonim",
+   "Bogurodzica",
+   "",
+   "1TCU698JguinPfzPLfkiHdLF1rr1SbVzf",
+   "Anonim - Bogurodzica.mp3",
+   2099200,
+   "audio/mpeg",
+   ""
+  ],
+  [
+   "Orlando di Lasso",
+   "Echo",
+   "",
+   "1yD23t7Dt6scf15VOUH7NsdqpZr1sQvlA",
+   "Orlando di Lasso - Echo.mp3",
+   1981212,
+   "audio/mpeg",
+   ""
+  ],
+  [
+   "Wacław Szamotuł",
+   "Już się zmierzcha",
+   "",
+   "1QYQ6mHpxvq7fKyNFVZnCUKmQlpQ-XlJY",
+   "Wacław Szamotuł - Już się zmierzcha.mp3",
+   2630645,
+   "audio/mpeg",
+   ""
+  ],
+  [
+   "Mikołaj Gomółka",
+   "Melodie na Psałterz polski",
+   "Psalm 47: Kleszczmy rękoma",
+   "1CRNqiCLbLPphmh_Ez9u7xS9DiwCIpup1",
+   "Mikołaj Gomółka - Melodie na psałterz polski - Psalm 47; Kleszczmy rękoma.mp3",
+   1617818,
+   "audio/mpeg",
+   ""
+  ],
+  [
+   "Adam Jarzębski",
+   "Tamburetta",
+   "",
+   "1wAR476EeWv1M0rWB7Ptl3mOjjndqgMgu",
+   "Adam Jarzebski - Tamburetta.mp3",
+   3782947,
+   "audio/mpeg",
+   ""
+  ],
+  [
+   "Antonio Vivaldi",
+   "Cztery pory roku",
+   "Koncert nr 3. F-dur \"Jesień\"",
+   "1SGSgWu3qOqNIRclkqRYPWd_7CZsEK2HK",
+   "Antonio Vivaldi - Cztery pory roku - Koncert nr 3 F-dur Jesień.mp3",
+   10235214,
+   "audio/mpeg",
+   ""
+  ],
+  [
+   "Jan Sebastian Bach",
+   "III Koncert brandenburski G-dur BWV 1048",
+   "",
+   "1qoWHQ9BshtwvPZGBDeaEMRKrfsCJeGXf",
+   "Jan Sebastian Bach - III Koncert brandenburski G-dur BWV1048.mp3",
+   13383140,
+   "audio/mpeg",
+   ""
+  ],
+  [
+   "Jan Sebastian Bach",
+   "Toccata i fuga d-moll",
+   "",
+   "1iO8IjuxiTXd8iGTssBI868qWw3OrIMZZ",
+   "Jan Sebastian Bach - Toccata i fuga d-moll.mp3",
+   6715643,
+   "audio/mpeg",
+   ""
+  ],
+  [
+   "Jan Sebastian Bach",
+   "Pasja według św. Mateusza BWV 244",
+   "",
+   "1zBZLXK-HSuq7eN94XnW461wB7KoEemFt",
+   "Jan Sebastian Bach - Pasja według św. Mateusza BWV 244 - dyr.Sir John Eliot Gardiner Wratislavia Cantans 2016 Cz.1.mp3",
+   128911576,
+   "audio/mpeg",
+   "",
+   "Uwaga, nagranie podzielone na dwie części.",
+   [
+    [
+     "1vXjGJxOmE9CU6eEeYcgLexLhJwXtPUdt",
+     "Jan Sebastian Bach - Pasja według św. Mateusza BWV 244 - dyr.Sir John Eliot Gardiner Wratislavia Cantans 2016 Cz.2.mp3",
+     182225314,
+     "audio/mpeg",
+     ""
+    ]
+   ]
+  ],
+  [
+   "Georg Friedrich Händel",
+   "oratorium Mesjasz",
+   "nr 44. Alleluja",
+   "178ZXvCFLbqqgiUr3f8IufVXVVKndxqX0",
+   "Georg Friedrich Händel - oratorium ''Mesjasz'' - nr 44. Alleluja.mp3",
+   8533659,
+   "audio/mpeg",
+   ""
+  ],
+  [
+   "Georg Friedrich Händel",
+   "Muzyka sztucznych ogni",
+   "cz. 1. Uwertura (Allegro, Lentement, Allegro)",
+   "1js-Odb6LeHPEXX0ERCJIjAcSCO5TFiwk",
+   "Georg Friedrich Händel - Muzyka sztucznych ogni - cz. 1. Uwertura (Allegro, Lentement, Allegro).mp3",
+   17946371,
+   "audio/mpeg",
+   ""
+  ],
+  [
+   "Joseph Haydn",
+   "92. Symfonia G-dur \"Oxfordzka\", Hob. I-92",
+   "cz. 3. Menuetto. Allegretto",
+   "1WhpRuYfnBUmiMZWyjH3hWXAlYGUJhoz1",
+   "Joseph Haydn - 92. Symfonia G-dur ''Oxfordzka'', Hob. I-92 - cz. 3. Menuetto. Allegretto.mp3",
+   14250965,
+   "audio/mpeg",
+   ""
+  ],
+  [
+   "Wolfgang Amadeusz Mozart",
+   "XX Koncert fortepianowy d-moll KV466",
+   "cz. 1. Allegro",
+   "1mu56FDaCnogXjIM5mRHU_Wc6rJR1UD38",
+   "Wolfgang Amadeusz Mozart - XX Koncert fortepianowy d-moll KV466 - cz. 1. Allegro.mp3",
+   14381518,
+   "audio/mpeg",
+   ""
+  ],
+  [
+   "Ludwig van Beethoven",
+   "IX Symfonia d-moll op. 125",
+   "",
+   "1Cse_SEvP1nu9tv5N6dDhBBhtDhAcLKiH",
+   "Ludwig van Beethoven - IX Symfonia d-moll op. 125.mp3",
+   94543936,
+   "audio/mpeg",
+   "",
+   "Zwróć uwagę na Odę do radości w finale 4. Części."
+  ],
+  [
+   "Ludwig van Beethoven",
+   "Kwartet smyczkowy nr 7 F-dur op. 59 nr 1 \"Razumowski\"",
+   "cz. 1",
+   "177Q6GVmz9ophDWUTtT_eU4VsmG7Y5vrS",
+   "Ludwig van Beethoven - Kwartet smyczkowy nr 7 F-dur op. 59 nr 1 ''Razumowski''.mp3",
+   10938220,
+   "audio/mpeg",
+   ""
+  ],
+  [
+   "Franz Schubert",
+   "Małgorzata przy kołowrotku",
+   "",
+   "15ZIEtSTPNrt2oUjj0NQ_JAPG0FhMmE2r",
+   "Franz Schubert - Małgorzata przy kołowrotku.mp3",
+   4462430,
+   "audio/mpeg",
+   ""
+  ],
+  [
+   "Fryderyk Chopin",
+   "Ballada g-moll op. 23",
+   "",
+   "1RhvA4K6IrCXcoZxmOF_jMsPrMdpTAiEe",
+   "Fryderyk Chopin - Ballada g-moll op.23.mp3",
+   18513472,
+   "audio/mpeg",
+   ""
+  ],
+  [
+   "Fryderyk Chopin",
+   "Koncert fortepianowy f-moll, op. 21",
+   "cz. 3. Allegro vivace",
+   "1pbiN7U4Z7mMAuybiKcNjP7ItXreTi7ta",
+   "Fryderyk Chopin - Koncert fortepianowy f-moll, op. 21 cz. 3. Allegro vivace.mp3",
+   7684706,
+   "audio/mpeg",
+   ""
+  ]
+ ]
+}
