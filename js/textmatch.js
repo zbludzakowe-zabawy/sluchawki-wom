@@ -768,3 +768,35 @@ export function fragmentSuggestions(rows, unused, files) {
 export function sortFragments(ids, nameOf) {
   return ids.slice().sort((a, b) => String(nameOf(a)).localeCompare(String(nameOf(b)), 'pl', { numeric: true }));
 }
+
+/**
+ * pliki z telefonu ↔ pliki utworów zbioru (np. nagrania pobrane wcześniej z Dysku).
+ * targets: [{ key, fileName, size, track }], locals: [{ name, size }]
+ * → [{ key, local (indeks w locals) | -1, score, sure }] w kolejności targets, zachłannie (najlepsze pary najpierw).
+ * Pewne: ten sam rozmiar w bajtach, prawie ta sama nazwa pliku albo wysokie dopasowanie autora/tytułu.
+ */
+export function localScore(t, l) {
+  const sameSize = t.size > 0 && l.size === t.size;
+  const ns = nameSimilarity(t.fileName || '', l.name);
+  const ms = t.track ? matchScore(t.track, l.name) : 0;
+  const score = sameSize && (ns >= 0.5 || ms >= MATCH_MIN) ? 1 : Math.max(ns, ms);
+  return { score, sure: score >= 1 || ns >= FRAGMENT_SIM || ms >= 0.7 };
+}
+export function matchLocalFiles(targets, locals) {
+  const pairs = [];
+  targets.forEach((t, i) => locals.forEach((l, j) => {
+    const { score, sure } = localScore(t, l);
+    if (score >= MATCH_MIN) pairs.push({ i, j, score: sure ? score + 1 : score, raw: score, sure });
+  }));
+  pairs.sort((a, b) => b.score - a.score);
+  const usedT = new Set();
+  const usedL = new Set();
+  const out = targets.map((t) => ({ key: t.key, local: -1, score: 0, sure: false }));
+  for (const p of pairs) {
+    if (usedT.has(p.i) || usedL.has(p.j)) continue;
+    usedT.add(p.i);
+    usedL.add(p.j);
+    out[p.i] = { key: targets[p.i].key, local: p.j, score: p.raw, sure: p.sure };
+  }
+  return out;
+}

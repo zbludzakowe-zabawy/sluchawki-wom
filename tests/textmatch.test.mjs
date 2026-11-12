@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {
   fold, tokens, parseLine, parseList, matchAll, matchScore, checkAnswer, checkAuthor, checkTitle, checkPart, explainField, answerSim, canonName,
-  cleanFileName, trackFromFileName, shuffle, spreadOrder, questionCount,
+  cleanFileName, trackFromFileName, shuffle, spreadOrder, questionCount, matchLocalFiles,
 } from '../js/textmatch.js';
 
 test('fold i tokens', () => {
@@ -314,4 +314,26 @@ test('utwór z kilku plików – podpowiedź podobnych plików', async () => {
   const name = (id) => files.find((f) => f.id === id).name;
   assert.deepEqual(sortFragments(['b', 'a'], name), ['a', 'b']);
   assert.deepEqual(sortFragments(['x10', 'x2'], (id) => `Utwór ${id.slice(1)}.mp3`), ['x2', 'x10']);
+});
+
+test('matchLocalFiles: pliki z telefonu do utworów zbioru', () => {
+  const corelli = { author: 'Arcangelo Corelli', title: "Concerto Grosso g-moll ''Na Boże Narodzenie'', op. 6 nr 8", part: 'cz. 5. Pastorale' };
+  const chopin = { author: 'Fryderyk Chopin', title: 'Mazurek a-moll op. 68 nr 2', part: '' };
+  const smetana = { author: 'Bedřich Smetana', title: 'Wełtawa', part: '' };
+  const targets = [
+    { key: 'c', fileName: "Arcangelo Corelli - Concerto Grosso g-moll ''Na Boże Narodzenie'', op. 6 nr 8 - cz. 5. Pastorale.mp3", size: 5000, track: corelli },
+    { key: 'h', fileName: 'Fryderyk Chopin - Mazurek a-moll op. 68 nr 2.mp3', size: 3000, track: chopin },
+    { key: 's', fileName: 'Bedřich Smetana - Wełtawa.mp3', size: 9000, track: smetana },
+  ];
+  const locals = [
+    { name: 'Fryderyk Chopin - Mazurek a-moll op. 68 nr 2.mp3', size: 2999 }, // ta sama nazwa
+    { name: 'nagranie 7.mp3', size: 5000 }, // inna nazwa, ale ten sam rozmiar – nie wystarczy bez podobieństwa
+    { name: 'smetana weltawa (1).m4a', size: 1234 }, // zmieniona nazwa – po autorze i tytule
+    { name: 'Corelli - Pastorale.mp3', size: 5000 }, // ten sam rozmiar + nazwisko
+  ];
+  const r = matchLocalFiles(targets, locals);
+  assert.equal(r[1].local, 0); assert.ok(r[1].sure);
+  assert.equal(r[0].local, 3); assert.ok(r[0].sure);
+  assert.equal(r[2].local, 2);
+  assert.deepEqual(matchLocalFiles(targets, [{ name: 'zupełnie coś innego.mp3', size: 1 }]).map((x) => x.local), [-1, -1, -1]);
 });

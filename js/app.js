@@ -4,7 +4,7 @@ import * as drive from './drive.js';
 import { readFileText } from './ocr.js';
 import { confetti } from './confetti.js';
 import {
-  parseList, matchAll, matchScore, fixFromFileName, fragmentSuggestions, sortFragments, confidence, MATCH_MIN, trackFromFileName, checkAnswer, explainAnswer, shuffle, spreadOrder, questionCount, fold, surname,
+  parseList, matchAll, matchScore, fixFromFileName, fragmentSuggestions, sortFragments, confidence, MATCH_MIN, trackFromFileName, matchLocalFiles, localScore, checkAnswer, explainAnswer, shuffle, spreadOrder, questionCount, fold, surname,
 } from './textmatch.js';
 
 // ---------- narzędzia ----------
@@ -263,6 +263,7 @@ async function setView(id) {
            <button class="btn primary" id="off-get">⇩ Pobierz teraz</button> <button class="btn" id="off-nowait">Nie czekaj</button>`
         : `<p>${have ? `Pobrano ${have} z ${n}. ` : ''}Zapisz utwory na tym urządzeniu, żeby słuchać i robić quizy bez internetu${size ? ` (ok. ${fmtMB(size)})` : ''}.</p>
            <button class="btn primary" id="off-get" ${busy ? 'disabled' : ''}>⇩ Pobierz na urządzenie</button> ${have ? '<button class="btn" id="off-del">Usuń pobrane</button>' : ''}`}
+      ${n ? `<a class="btn wide local-link" href="#/nagrania/${esc(id)}">📁 Nagrania z telefonu i pojedyncze utwory</a>` : ''}
       <div id="off-progress" ${auto || busy ? '' : 'hidden'}><div class="bar"><i></i></div><p class="muted" id="off-status"></p><button class="btn" id="off-cancel">${auto || (busy && dl.auto) ? 'Nie pobieraj' : 'Przerwij'}</button></div>
     </div>`;
   render(`
@@ -545,6 +546,7 @@ async function downloadAskView() {
       <button class="btn big" data-dl="wifi">📶 Poczekaj na Wi‑Fi<small>${conn === 'unknown'
         ? 'przy następnym otwarciu aplikacji zapytam, czy jesteś na Wi‑Fi'
         : 'pobiorę, gdy telefon połączy się z Wi‑Fi, a aplikacja będzie otwarta'}</small></button>
+      ${sets.length === 1 ? '<button class="btn big" data-dl="local">📁 Mam te nagrania w telefonie<small>wskażę pliki – nie trzeba pobierać z internetu</small></button>' : ''}
       <button class="btn big" data-dl="no">Nie pobieraj<small>słuchanie przez internet; pobrać można później</small></button>
     </div>
   `);
@@ -558,9 +560,149 @@ async function downloadAskView() {
       sets.forEach((x) => wifiSnoozed.add(x.id)); // nie pytamy od razu jeszcze raz na stronie głównej
       toast(conn === 'unknown' ? 'Dobrze – zapytam przy następnym otwarciu aplikacji.' : 'Dobrze – pobiorę nagrania, gdy będzie Wi‑Fi.');
       if (conn === 'wifi') setTimeout(checkWifi, 0);
+    } else if (c === 'local') {
+      ids.forEach(wifiWaitRemove);
+      return location.replace(`#/nagrania/${sets[0].id}`);
     } else ids.forEach(wifiWaitRemove);
     location.replace(target);
   }));
+}
+
+// ---------- nagrania z telefonu i pojedyncze utwory ----------
+const AUDIO_ACCEPT = 'audio/*,.mp3,.m4a,.aac,.wav,.ogg,.oga,.opus,.flac,.wma';
+/** kopia pliku z telefonu do pamięci aplikacji (oryginał zostaje nietknięty) */
+async function saveLocal(fileId, file) {
+  const blob = new Blob([await file.arrayBuffer()], { type: file.type || 'audio/mpeg' });
+  await db.putAudio(fileId, blob);
+}
+function pickFiles(multiple) {
+  return new Promise((res) => {
+    const inp = document.createElement('input');
+    inp.type = 'file';
+    inp.accept = AUDIO_ACCEPT;
+    inp.multiple = multiple;
+    inp.style.display = 'none';
+    inp.addEventListener('change', () => { res([...inp.files]); inp.remove(); });
+    document.body.append(inp);
+    inp.click();
+  });
+}
+
+async function localFilesView(id) {
+  const set = await db.getSet(id);
+  if (!set) return location.replace('#/');
+  setHeader('Nagrania', `#/zbior/${id}`);
+  await refreshDownloaded();
+  // każdy plik utworu osobno (utwór nagrany w kilku plikach = kilka wierszy)
+  const targets = set.tracks.flatMap((t) => trackFiles(t).map((f, k, all) => ({
+    key: f.fileId, fileName: f.fileName, size: f.size, track: t, file: f,
+    label: trackLabel(t) + (all.length > 1 ? ` (fragment ${k + 1})` : ''),
+  }))).filter((x, i, a) => a.findIndex((y) => y.key === x.key) === i);
+  const missing = targets.filter((x) => !downloaded.has(x.key));
+  const have = targets.length - missing.length;
+  render(`
+    <h1 class="page-title">Nagrania na urządzeniu</h1>
+    <p class="muted">${esc(set.name)}</p>
+    <div class="card">
+      <p>${have === targets.length ? '<span class="ok">✓ Wszystkie nagrania są na tym urządzeniu.</span>' : `Na urządzeniu: <b>${have} z ${targets.length}</b>.`}</p>
+      <button class="btn primary wide" id="loc-pick">📁 Wybierz nagrania z telefonu</button>
+      <p class="muted small">Zaznacz wiele plików naraz – sam dopasuję je do utworów. Aplikacja zapisuje sobie kopię; Twoich plików nie zmienia ani nie usuwa.</p>
+      ${missing.length ? `<button class="btn wide" id="loc-drive">⇩ Pobierz brakujące z Dysku Google (${missing.length})</button>` : ''}
+    </div>
+    <div id="loc-check"></div>
+    <h2 class="sec-title">Utwory</h2>
+    <ol class="loc-list">${targets.map((x) => `<li data-key="${esc(x.key)}">
+      <span class="loc-name">${esc(x.label)}<small>${downloaded.has(x.key) ? '<span class="ok">✓ na urządzeniu</span>' : '<span class="muted">brak – gra przez internet</span>'}</small></span>
+      <span class="loc-act"><button class="btn sm" data-one="${esc(x.key)}" title="Wskaż plik w telefonie">📁 ${downloaded.has(x.key) ? 'Zamień' : 'Z telefonu'}</button>
+      ${downloaded.has(x.key) ? '' : `<button class="btn sm" data-drive="${esc(x.key)}" title="Pobierz z Dysku Google">⇩ Z Dysku</button>`}</span></li>`).join('')}</ol>
+    <a class="btn wide" href="#/zbior/${esc(id)}">Gotowe – wróć do zbioru</a>
+  `);
+  const again = () => { if (location.hash === `#/nagrania/${id}`) localFilesView(id); };
+  try { if (navigator.storage && navigator.storage.persist) navigator.storage.persist(); } catch { /* trudno */ }
+
+  const dr = $('#loc-drive');
+  if (dr) dr.addEventListener('click', () => { autoDownload = id; wifiWaitRemove(id); location.hash = `#/zbior/${id}`; });
+
+  $$('[data-one]').forEach((b) => b.addEventListener('click', async () => {
+    const x = targets.find((t) => t.key === b.dataset.one);
+    const [file] = await pickFiles(false);
+    if (!file) return;
+    b.disabled = true;
+    try { await saveLocal(x.key, file); toast(`Zapisano „${file.name}” jako: ${x.label}.`, 'good'); } catch (e) {
+      toast(e.name === 'QuotaExceededError' ? 'Brak miejsca na urządzeniu.' : 'Nie udało się zapisać pliku.', 'error');
+    }
+    again();
+  }));
+
+  $$('[data-drive]').forEach((b) => b.addEventListener('click', async () => {
+    const x = targets.find((t) => t.key === b.dataset.drive);
+    if (!navigator.onLine) return toast('Do pobrania potrzebny jest internet.', 'error');
+    if (!drive.hasApiKey()) return toast('Brak klucza Google API – wpisz go w Ustawieniach.', 'error');
+    b.disabled = true;
+    try {
+      const blob = await drive.download(x.file, (f) => { b.textContent = `⇩ ${Math.round(f * 100)}%`; });
+      await db.putAudio(x.key, blob);
+      toast(`Pobrano: ${x.label}.`, 'good');
+    } catch (e) { toast(e.name === 'QuotaExceededError' ? 'Brak miejsca na urządzeniu.' : e.message, 'error'); }
+    again();
+  }));
+
+  $('#loc-pick').addEventListener('click', async () => {
+    const files = await pickFiles(true);
+    if (!files.length) return;
+    // pliki już zapisane też można zastąpić, ale najpierw dopasowujemy do brakujących
+    const pool = missing.length ? missing : targets;
+    const res = matchLocalFiles(pool, files.map((f) => ({ name: f.name, size: f.size })));
+    const sure = res.filter((r) => r.local >= 0 && r.sure);
+    const unsure = res.filter((r) => r.local >= 0 && !r.sure);
+    const used = new Set(res.filter((r) => r.local >= 0).map((r) => r.local));
+    const spare = files.map((f, j) => j).filter((j) => !used.has(j));
+    let saved = 0;
+    for (const r of sure) {
+      try { await saveLocal(r.key, files[r.local]); saved++; } catch (e) {
+        toast(e.name === 'QuotaExceededError' ? 'Brak miejsca na urządzeniu.' : 'Nie udało się zapisać pliku.', 'error');
+        if (e.name === 'QuotaExceededError') break;
+      }
+    }
+    await refreshDownloaded();
+    const left = targets.filter((x) => !downloaded.has(x.key)).length;
+    // zostały pliki bez pary, a utworom brakuje nagrań – też do tabelki (z podpowiedzią, jeśli coś choć trochę pasuje)
+    if (spare.length) {
+      for (const x of pool) {
+        if (downloaded.has(x.key) || unsure.some((r) => r.key === x.key)) continue;
+        const best = spare.map((j) => ({ j, ...localScore(x, { name: files[j].name, size: files[j].size }) })).sort((a, b) => b.score - a.score)[0];
+        unsure.push({ key: x.key, local: best && best.score >= 0.2 ? best.j : -1, extra: true });
+      }
+    }
+    if (!unsure.length) {
+      toast(`Dodano ${pl(saved, 'nagranie', 'nagrania', 'nagrań')} z telefonu.${left ? ` Brakuje jeszcze ${left}.` : ' Wszystkie są na urządzeniu.'}`, saved ? 'good' : '');
+      if (spare.length) toast(`Nie pasuje do żadnego utworu: ${spare.map((j) => files[j].name).join(', ')}`);
+      return again();
+    }
+    // niepewne dopasowania – tabelka do sprawdzenia
+    await localFilesView(id);
+    const box = $('#loc-check');
+    const opts = (r) => {
+      const cand = [...new Set([...(r.local >= 0 ? [r.local] : []), ...spare])];
+      return `<option value="-1">— nie używaj —</option>${cand.map((j) => `<option value="${j}" ${j === r.local ? 'selected' : ''}>${esc(files[j].name)}</option>`).join('')}`;
+    };
+    box.innerHTML = `<div class="card check-box">
+      <p>Dodano ${pl(saved, 'nagranie', 'nagrania', 'nagrań')}. <b>Sprawdź resztę</b> – tu nie mam pewności, który plik pasuje:</p>
+      ${unsure.map((r) => `<label class="check-row"><span>${esc(pool.find((x) => x.key === r.key).label)}</span>
+        <select data-check="${esc(r.key)}">${opts(r)}</select></label>`).join('')}
+      <div class="grid2"><button class="btn" id="chk-skip">Pomiń</button><button class="btn primary" id="chk-ok">Zapisz</button></div></div>`;
+    box.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    $('#chk-skip').addEventListener('click', () => { box.innerHTML = ''; });
+    $('#chk-ok').addEventListener('click', async () => {
+      const picks = $$('[data-check]', box).map((sel) => [sel.dataset.check, Number(sel.value)]).filter(([, j]) => j >= 0);
+      const seen = new Set();
+      if (picks.some(([, j]) => seen.has(j) || !seen.add(j))) return toast('Ten sam plik wybrano dla dwóch utworów.', 'error');
+      let n = 0;
+      for (const [key, j] of picks) { try { await saveLocal(key, files[j]); n++; } catch { toast('Nie udało się zapisać pliku.', 'error'); break; } }
+      toast(`Zapisano ${pl(n, 'nagranie', 'nagrania', 'nagrań')}.`, 'good');
+      again();
+    });
+  });
 }
 
 // ---------- odtwarzacz ----------
@@ -1766,6 +1908,7 @@ const routes = [
   [/^#\/import\/([\w-]+)$/, importView],
   [/^#\/import$/, importLinkView],
   [/^#\/pobieranie$/, downloadAskView],
+  [/^#\/nagrania\/([\w-]+)$/, localFilesView],
 ];
 let lastHash = null;
 async function route() {
