@@ -151,6 +151,26 @@ test('quiz tekstowy – pokazanie pomyłek', () => {
   assert.deepEqual(explainField('part', '', ''), []);
 });
 
+test('quiz tekstowy – tonacje: wielka litera = dur, mała = moll', () => {
+  const t = 'Polonez A-dur op. 40 nr 1';
+  assert.equal(checkTitle('Polonez A op. 40 nr 1', t), true);
+  assert.equal(checkTitle('polonez a dur op 40 nr 1', t), true);
+  assert.equal(checkTitle('Polonez op. 40 nr 1', t), true); // tonację można pominąć
+  assert.equal(checkTitle('Polonez a op. 40 nr 1', t), false); // „a” = a-moll
+  assert.equal(checkTitle('Polonez C-dur op. 40 nr 1', t), false);
+  assert.equal(checkTitle('Polonez a-moll op. 40 nr 1', t), false);
+  assert.equal(checkTitle('Concerto grosso g op. 6 nr 8', 'Concerto Grosso g-moll „Na Boże Narodzenie” op. 6 nr 8'), true);
+  assert.equal(checkTitle('Concerto grosso G op. 6 nr 8', 'Concerto Grosso g-moll „Na Boże Narodzenie” op. 6 nr 8'), false);
+  assert.equal(checkTitle('Preludium Fis', 'Preludium Fis-dur'), true);
+  assert.equal(checkTitle('Preludium fis', 'Preludium Fis-dur'), false);
+  assert.equal(checkTitle('Msza h', 'Msza h-moll'), true);
+  assert.equal(checkPart('Preludium C', 'tom 1 - Preludium C-dur'), true);
+  assert.equal(checkPart('Preludium c', 'tom 1 - Preludium C-dur'), false);
+  assert.deepEqual(explainField('title', 'Polonez a op. 40 nr 1', t), [{ kind: 'wrong', given: 'a', fix: 'A-dur', key: true }]);
+  assert.deepEqual(explainField('title', 'Polonez A op. 40 nr 1', t), []);
+  assert.deepEqual(explainField('title', 'Polonez A dur op. 40 nr 1', t), []);
+});
+
 test('shuffle zachowuje elementy', () => {
   const a = [1, 2, 3, 4, 5, 6];
   assert.deepEqual(shuffle(a).sort(), a);

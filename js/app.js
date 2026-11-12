@@ -673,7 +673,7 @@ function whyHtml(notes, ok, inline) {
   const q = (x) => `„${esc(x)}”`;
   const items = notes.map((n) => {
     if (n.kind === 'typo') return `<span class="typo">${q(n.given)} → ${q(n.fix)}</span>`;
-    if (n.kind === 'wrong') return `<span class="err">„<s>${esc(n.given)}</s>”${n.fix ? ` → ${q(n.fix)}` : ' – nie pasuje'}</span>`;
+    if (n.kind === 'wrong') return `<span class="err">„<s>${esc(n.given)}</s>”${n.fix ? ` → ${q(n.fix)}` : ' – nie pasuje'}${n.key ? ' (tonacja: wielka litera = dur, mała = moll)' : ''}</span>`;
     if (n.kind === 'missing') return `<span class="err">brakuje ${q(n.fix)}</span>`;
     if (n.kind === 'empty') return '<span class="err">brak odpowiedzi</span>';
     if (n.kind === 'nopart') return '<span class="err">ten utwór nie ma części – pole zostaw puste</span>';

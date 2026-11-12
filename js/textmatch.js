@@ -287,13 +287,30 @@ export function typoDistance(a, b) {
   return d[a.length][b.length];
 }
 
+// Tonacje: „A-dur” = „A” (wielka litera = dur), „a-moll” = „a” (mała litera = moll).
+// Zamieniamy je na jeden token („adur”, „fismoll”), który – jak liczba – musi się zgadzać dokładnie.
+const NOTE = '[A-Ha-h](?:is|es|s)?(?:is|es)?';
+const KEY_RE = new RegExp(`(^|[^\\p{L}\\p{N}'’])(${NOTE})(?:\\s*-?\\s*([Dd][Uu][Rr]|[Mm][Oo][Ll][Ll]))?(?![\\p{L}\\p{N}'’])`, 'gu');
+const isKey = (t) => /^[a-h](?:is|es|s)?(?:is|es)?(?:dur|moll)$/.test(t);
+
+/** tekst z tonacjami zapisanymi jednym słowem: „Polonez A op. 40” → „Polonez  adur  op. 40” */
+export function keyed(s) {
+  return String(s || '').replace(KEY_RE, (m, pre, note, mode) => {
+    const kind = mode ? mode.toLowerCase() : note[0] === note[0].toUpperCase() ? 'dur' : 'moll';
+    return `${pre} ${note.toLowerCase()}${kind} `;
+  });
+}
+const keysOf = (ts) => ts.filter(isKey);
+/** podane tonacje muszą występować w poprawnej odpowiedzi */
+const keysOk = (a, c) => keysOf(a).every((k) => c.includes(k));
+
 /** ile literówek przepuszczamy w słowie tej długości */
 const typoLimit = (len) => (len >= 11 ? 3 : len >= 7 ? 2 : len >= 4 ? 1 : 0);
 
 /** podobieństwo słowa z odpowiedzi do poprawnego: 1 = identyczne, 0.9 = literówka/skrót, 0 = inne; liczby muszą być równe */
 export function answerSim(a, b) {
   if (a === b) return 1;
-  if (isNum(a) || isNum(b)) return 0;
+  if (isNum(a) || isNum(b) || isKey(a) || isKey(b)) return 0;
   if (a.length >= 4 && b.startsWith(a)) return 0.9; // skrót: „brandenb.”
   return typoDistance(a, b) <= typoLimit(b.length) ? 0.9 : 0;
 }
@@ -338,22 +355,23 @@ function titleVariantTexts(title) {
 }
 
 function titleScore(a, variant) {
-  const c = noGenre(tokens(variant));
-  return (numsOf(a) === numsOf(c) ? 1 : 0) + seqSim(a, c);
+  const c = noGenre(tokens(keyed(variant)));
+  return (numsOf(a) === numsOf(c) && keysOk(a, c) ? 1 : 0) + seqSim(a, c);
 }
 
 export function checkTitle(answer, correct) {
-  const a = noGenre(tokens(answer));
+  const a = noGenre(tokens(keyed(answer)));
   if (!tokens(correct).length) return !a.length;
   if (!a.length) return false;
   return titleVariantTexts(correct).some((v) => titleScore(a, v) >= 1.8);
 }
 
 export function checkPart(answer, correct) {
-  const a = tokens(answer, { roman: true });
-  const c = tokens(correct, { roman: true });
+  const a = tokens(keyed(answer), { roman: true });
+  const c = tokens(keyed(correct), { roman: true });
   if (!c.length) return !a.length; // nie ma części – pole ma zostać puste
   if (!a.length) return false;
+  if (!keysOk(a, c)) return false;
   const aw = a.filter((t) => !isNum(t));
   const cw = c.filter((t) => !isNum(t));
   // podane liczby muszą się zgadzać („I” = „cz. 1”); same słowa („Pastorale”) też wystarczą
@@ -375,18 +393,20 @@ export function checkAnswer(ans, track) {
 const bare = (w) => w.replace(/^[^\p{L}\p{N}]+|[^\p{L}\p{N}]+$/gu, '');
 
 /** słowa tekstu z tokenami: [{word, tok}] (tokeny liczone w kontekście poprzednich słów – „cz. I” → 1) */
-function wordTokens(text, opts) {
+function wordTokens(text, { keys, ...opts }) {
   const words = String(text || '').replace(/[“”„"]|''/g, ' ').split(/\s+/).filter(Boolean);
+  const tok = (ws) => tokens(keys ? keyed(ws.join(' ')) : ws.join(' '), { ...opts, keepStop: true });
+  const full = tok(words); // całość – „a dur” (dwa słowa) to jedna tonacja „adur”
   const out = [];
   let before = 0;
   for (let i = 0; i < words.length; i++) {
-    const all = tokens(words.slice(0, i + 1).join(' '), { ...opts, keepStop: true });
-    const mine = all.slice(before);
-    for (const tok of mine) {
-      if (STOP.has(tok) || GENRE.has(tok)) continue;
-      out.push({ word: mine.length > 1 ? tok : bare(words[i]), tok }); // „op.40” → „op”, „40”
+    const upto = tok(words.slice(0, i + 1)).length;
+    const mine = full.slice(before, Math.max(before, upto));
+    for (const t of mine) {
+      if (STOP.has(t) || GENRE.has(t)) continue;
+      out.push({ word: mine.length > 1 && !isKey(t) ? t : bare(words[i]), tok: t }); // „op.40” → „op”, „40”
     }
-    before = all.length;
+    before = Math.max(before, upto);
   }
   return out;
 }
@@ -398,14 +418,15 @@ function wordTokens(text, opts) {
  */
 export function explainField(field, answer, correct) {
   const roman = field === 'part';
-  const A = wordTokens(answer, { roman });
+  const keys = field !== 'author';
+  const A = wordTokens(answer, { roman, keys });
   if (field === 'title') {
     // porównujemy z wariantem tytułu najbliższym odpowiedzi (np. bez dopisku w cudzysłowie)
     const a = A.map((x) => x.tok);
     const vs = titleVariantTexts(correct);
     if (vs.length) correct = vs.reduce((best, v) => (titleScore(a, v) > titleScore(a, best) ? v : best), vs[0]);
   }
-  const C = wordTokens(correct, { roman });
+  const C = wordTokens(correct, { roman, keys });
   if (!C.length) return A.length ? [{ kind: 'nopart' }] : [];
   if (!A.length) return [{ kind: 'empty' }];
   const used = new Set();
@@ -421,11 +442,13 @@ export function explainField(field, answer, correct) {
     C.forEach((c, k) => { if (!used.has(k) && answerSim(x.tok, c.tok) > 0 && best < 0) best = k; });
     if (best >= 0) { used.add(best); res[i] = { kind: 'typo', given: x.word, fix: C[best].word }; }
   });
-  A.forEach((x, i) => {
-    if (res[i] || !isNum(x.tok)) return;
-    const j = C.findIndex((c, k) => !used.has(k) && isNum(c.tok));
-    if (j >= 0) { used.add(j); res[i] = { kind: 'wrong', given: x.word, fix: C[j].word }; }
-  });
+  for (const same of [isNum, isKey]) {
+    A.forEach((x, i) => {
+      if (res[i] || !same(x.tok)) return;
+      const j = C.findIndex((c, k) => !used.has(k) && same(c.tok));
+      if (j >= 0) { used.add(j); res[i] = { kind: 'wrong', given: x.word, fix: C[j].word, ...(same === isKey ? { key: true } : {}) }; }
+    });
+  }
   A.forEach((x, i) => {
     if (res[i]) return;
     if (field === 'author') {
