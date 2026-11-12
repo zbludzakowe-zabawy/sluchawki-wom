@@ -156,12 +156,43 @@ async function home() {
     <h2 class="sec-title">Dodawanie, import i eksport</h2>
     <div class="grid2">
       <a class="btn big" href="#/dodaj">＋ Nowy zbiór</a>
-      <label class="btn big">⇩ Importuj z pliku<small>plik .sluchawki.json</small><input type="file" id="imp-file" accept=".json,application/json" multiple hidden></label>
+      <button class="btn big" id="imp-toggle" aria-expanded="false" aria-controls="imp-panel">⇩ Importuj<small>z pliku albo z linku</small></button>
     </div>
-    <a class="btn wide" href="#/import">🔗 Importuj z linku<small>link „Udostępnij”, plik na Dysku Google albo w internecie</small></a>
+    <section class="card imp-panel" id="imp-panel" hidden>
+      <label class="btn wide">📄 Z pliku<small>plik .sluchawki.json</small><input type="file" id="imp-file" accept=".json,application/json" multiple hidden></label>
+      <p class="imp-or">albo z linku</p>
+      <div class="row-inline"><input id="imp-link" inputmode="url" autocomplete="off" placeholder="Wklej link…" aria-label="Link do zbioru"><button class="btn primary" id="imp-go">Wczytaj</button></div>
+      <p class="muted small">Link z „↗ Udostępnij link”, link do pliku zbioru na Dysku Google (udostępnionego „Każdy, kto ma link”) albo adres pliku .json w internecie.</p>
+    </section>
     ${sets.length ? '<button class="btn wide" id="exp-all">⇪ Eksportuj wszystkie zbiory do pliku</button>' : ''}
     ${!drive.hasApiKey() ? `<p class="hint">Do słuchania z Dysku Google potrzebny jest klucz API – <a href="#/ustawienia">ustaw go w Ustawieniach</a>.</p>` : ''}
   `);
+  $('#imp-toggle').addEventListener('click', () => {
+    const panel = $('#imp-panel');
+    panel.hidden = !panel.hidden;
+    $('#imp-toggle').setAttribute('aria-expanded', String(!panel.hidden));
+    if (!panel.hidden) panel.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+  });
+  const goLink = async () => {
+    const link = $('#imp-link').value.trim();
+    if (!link) return toast('Wklej link.', 'error');
+    const btn = $('#imp-go');
+    btn.disabled = true;
+    btn.textContent = 'Wczytywanie…';
+    let d;
+    try {
+      d = await fetchSetFromLink(link);
+      unpackAny(d);
+    } catch (e) {
+      btn.disabled = false;
+      btn.textContent = 'Wczytaj';
+      return toast(e.message, 'error');
+    }
+    pendingImport = d;
+    go('#/import');
+  };
+  $('#imp-go').addEventListener('click', goLink);
+  $('#imp-link').addEventListener('keydown', (e) => { if (e.key === 'Enter') goLink(); });
   $('#imp-file').addEventListener('change', async (e) => {
     const files = [...e.target.files];
     e.target.value = '';
@@ -1315,7 +1346,7 @@ async function settingsView() {
     <section class="card step">
       <h2>O aplikacji</h2>
       <p><strong>Aplikacja do użytku wewnętrznego, utworzona na potrzeby nauki na WOM.</strong></p>
-      <p class="muted">Słuchawki – Kanony na WOM. Zbiory utworów i wyniki są zapisane tylko na tym urządzeniu. Aby przenieść zbiory na inne urządzenie, użyj „Eksportuj do pliku” (w zbiorze) albo „Eksportuj wszystkie zbiory” (na stronie głównej), a potem „Importuj z pliku” na drugim urządzeniu.</p>
+      <p class="muted">Słuchawki – Kanony na WOM. Zbiory utworów i wyniki są zapisane tylko na tym urządzeniu. Aby przenieść zbiory na inne urządzenie, użyj „Eksportuj do pliku” (w zbiorze) albo „Eksportuj wszystkie zbiory” (na stronie głównej), a potem „Importuj → Z pliku” na drugim urządzeniu.</p>
     </section>
   `);
   $('#api-save').addEventListener('click', () => {
@@ -1507,6 +1538,14 @@ async function importView(data) {
   importPreview(d, 'Ktoś udostępnił Ci');
 }
 
+/** zbiór wczytany z linku (strona główna → Importuj → z linku) czeka na podgląd pod #/import */
+let pendingImport = null;
+function importLinkView() {
+  if (!pendingImport) return location.replace('#/');
+  setHeader('Import zbioru', '#/');
+  importPreview(pendingImport, 'Pod linkiem jest');
+}
+
 /** podgląd zbioru (albo kilku zbiorów) przed zapisem */
 function importPreview(d, lead) {
   const list = unpackAny(d);
@@ -1538,7 +1577,7 @@ async function fetchSetFromLink(link) {
     if (!/^https?:$/.test(url.protocol)) throw new Error('To nie wygląda na link. Wklej cały adres zaczynający się od https://');
     let res;
     try { res = await fetch(url.href, { cache: 'no-cache' }); } catch {
-      throw new Error('Nie udało się pobrać pliku. Brak internetu albo ta strona nie pozwala na pobieranie przez aplikację – pobierz plik i użyj „Importuj z pliku”.');
+      throw new Error('Nie udało się pobrać pliku. Brak internetu albo ta strona nie pozwala na pobieranie przez aplikację – pobierz plik i użyj „Importuj → Z pliku”.');
     }
     if (!res.ok) throw new Error(`Nie udało się pobrać pliku (błąd ${res.status}). Sprawdź link.`);
     text = await res.text();
@@ -1546,43 +1585,6 @@ async function fetchSetFromLink(link) {
   try { return JSON.parse(text); } catch { throw new Error('Pod tym linkiem nie ma pliku zbioru Słuchawek.'); }
 }
 
-async function importLinkView() {
-  setHeader('Import z linku', '#/');
-  render(`
-    <h1 class="page-title">Import z linku</h1>
-    <section class="card step">
-      <p class="muted">Wklej link do zbioru:</p>
-      <ul class="muted">
-        <li>link z przycisku <b>↗ Udostępnij link</b> w aplikacji,</li>
-        <li>link do pliku <i>.sluchawki.json</i> na Dysku Google (udostępnionego „Każdy, kto ma link”),</li>
-        <li>albo adres pliku <i>.json</i> w internecie.</li>
-      </ul>
-      <div class="row-inline"><input id="imp-link" inputmode="url" autocomplete="off" placeholder="https://…" aria-label="Link do zbioru"><button class="btn primary" id="imp-go">Wczytaj</button></div>
-      <p class="muted" id="imp-status" hidden></p>
-    </section>
-  `);
-  const go = async () => {
-    const link = $('#imp-link').value.trim();
-    if (!link) return toast('Wklej link.', 'error');
-    const btn = $('#imp-go');
-    btn.disabled = true;
-    $('#imp-status').hidden = false;
-    $('#imp-status').textContent = 'Wczytywanie…';
-    let d;
-    try {
-      d = await fetchSetFromLink(link);
-      unpackAny(d);
-    } catch (e) {
-      btn.disabled = false;
-      $('#imp-status').hidden = true;
-      return toast(e.message, 'error');
-    }
-    importPreview(d, 'Pod linkiem jest');
-  };
-  $('#imp-go').addEventListener('click', go);
-  $('#imp-link').addEventListener('keydown', (e) => { if (e.key === 'Enter') go(); });
-  $('#imp-link').focus();
-}
 
 // ---------- router ----------
 const routes = [

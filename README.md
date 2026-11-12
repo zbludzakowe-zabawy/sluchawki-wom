@@ -32,9 +32,9 @@ Aplikacja do nauki rozpoznawania utworów ze słuchu. Działa w przeglądarce i 
 **Eksport i import**
 - Zbiory są zapisane na urządzeniu.
 - **Eksportuj do pliku** (w zbiorze) zapisuje jeden zbiór, a **Eksportuj wszystkie zbiory** (strona główna) zapisuje wszystkie w jednym pliku `.sluchawki.json`.
-- Na drugim urządzeniu: **Importuj z pliku** na stronie głównej. Ponowny import tego samego zbioru zastępuje go, zamiast tworzyć duplikat.
+- Na drugim urządzeniu: **Importuj → Z pliku** na stronie głównej. Ponowny import tego samego zbioru zastępuje go, zamiast tworzyć duplikat.
 - **Udostępnij link** wysyła cały zbiór w linku, który otwiera się w aplikacji i zapisuje jednym stuknięciem.
-- **Importuj z linku** (strona główna) – wklejasz link: z „Udostępnij link”, do pliku zbioru na Dysku Google (udostępnionego „Każdy, kto ma link”) albo adres pliku `.json` w internecie. Przed zapisem widać podgląd zbioru.
+- **Importuj → z linku** (strona główna; przycisk „Importuj” rozwija obie możliwości) – wklejasz link: z „Udostępnij link”, do pliku zbioru na Dysku Google (udostępnionego „Każdy, kto ma link”) albo adres pliku `.json` w internecie. Przed zapisem widać podgląd zbioru.
 
 **Biblioteka zbiorów (dla wszystkich użytkowników)**
 - Zbiory wrzucone do folderu `zbiory/` w repozytorium widzi każdy na stronie głównej, w sekcji „Biblioteka zbiorów”. Wystarczy stuknąć **＋ Dodaj**.

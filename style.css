@@ -347,3 +347,9 @@ body.has-mini .app-banner { bottom: calc(84px + env(safe-area-inset-bottom)); }
 .frag-hint .frag-btns { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
 .frag-alert { margin: 0 0 10px; font-weight: 600; }
 .tfields select.pick-frag { font-size: .9rem; min-height: 36px; }
+
+/* rozwijany import: z pliku albo z linku */
+.imp-panel { display: flex; flex-direction: column; gap: 4px; margin-top: 0; }
+.imp-panel .row-inline { margin: 4px 0; }
+.imp-or { text-align: center; color: var(--muted); font-size: .85rem; margin: 8px 0 0; }
+.imp-panel .small { font-size: .82rem; margin: 0; }
