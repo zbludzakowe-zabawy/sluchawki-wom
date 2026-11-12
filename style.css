@@ -211,6 +211,11 @@ label > input, label > select { margin-top: 4px; }
 .qform label.wrong input { border-color: var(--bad); background: var(--bad-bg); }
 .qform label.right::after { content: " ✓"; color: var(--good); }
 .qform label.wrong::after { content: " ✗"; color: var(--bad); }
+.why { font-size: .88rem; margin-top: -6px; line-height: 1.4; color: var(--muted); }
+.why .typo { color: var(--warn); background: var(--warn-bg); border-radius: 6px; padding: 0 4px; }
+.why .err { color: var(--bad); }
+.why .err s { text-decoration-thickness: 2px; }
+span.why { margin: 0; font-size: inherit; }
 .feedback { border-radius: var(--radius); padding: 12px 14px; display: flex; flex-direction: column; gap: 2px; }
 .feedback.good { background: var(--good-bg); color: var(--ink); border-left: 5px solid var(--good); }
 .feedback.bad { background: var(--bad-bg); color: var(--ink); border-left: 5px solid var(--bad); }
