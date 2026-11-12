@@ -231,11 +231,23 @@ async function setView(id) {
   const nq = questionKeys(set).length; // pytań w quizie (utwór z kilku plików = kilka pytań)
   const results = (await db.resultsFor(id).catch(() => [])).sort((a, b) => b.date - a.date).slice(0, 5);
   const locked = !!set.lib;
+  const auto = autoDownload === id && n > 0 && have < n;
+  if (autoDownload === id) autoDownload = null;
+  const busy = dl && dl.setId === id;
+  const offBox = `<div class="card offline-box${auto ? ' auto-dl' : ''}">
+      ${auto ? `<p><b>⇩ Pobieram nagrania na to urządzenie</b>${size ? ` (ok. ${fmtMB(size)})` : ''} – aplikacja będzie działać szybciej i bez internetu.
+        Nie chcesz? Stuknij „Nie pobieraj”. Możesz to zrobić później w części „Bez internetu”.</p>`
+      : have === n && n ? `<p><span class="ok">✓ Wszystkie utwory są zapisane na tym urządzeniu.</span></p><button class="btn" id="off-del">Usuń z urządzenia</button>`
+        : `<p>${have ? `Pobrano ${have} z ${n}. ` : ''}Zapisz utwory na tym urządzeniu, żeby słuchać i robić quizy bez internetu${size ? ` (ok. ${fmtMB(size)})` : ''}.</p>
+           <button class="btn primary" id="off-get" ${busy ? 'disabled' : ''}>⇩ Pobierz na urządzenie</button> ${have ? '<button class="btn" id="off-del">Usuń pobrane</button>' : ''}`}
+      <div id="off-progress" ${auto || busy ? '' : 'hidden'}><div class="bar"><i></i></div><p class="muted" id="off-status"></p><button class="btn" id="off-cancel">${auto || (busy && dl.auto) ? 'Nie pobieraj' : 'Przerwij'}</button></div>
+    </div>`;
   render(`
     <div class="title-row">
       <div><h1 class="page-title">${esc(set.name)}</h1><p class="muted">${utwory(n)}${locked ? ' · 🔒 z biblioteki' : ''}</p></div>
       ${locked ? '<button class="btn" data-copy>⧉ Własna kopia</button>' : `<a class="btn" href="#/edytuj/${esc(id)}">✎ Edytuj</a>`}
     </div>
+    ${auto ? offBox : ''}
     ${!n && !locked ? `<div class="empty card">Ten zbiór jest pusty. <a href="#/dodaj/${esc(id)}">Dodaj utwory</a>.</div>` : ''}
     <h2 class="sec-title">Słuchanie</h2>
     <div class="grid2">
@@ -262,13 +274,7 @@ async function setView(id) {
     </div>
     ${results.length ? `<h2 class="sec-title">Ostatnie wyniki</h2><ul class="results">${results.map((r) =>
       `<li><span>${r.type === 'text' ? '⌨' : '🎯'} ${fmtDate(r.date)}</span><b>${r.correct}/${r.total} (${Math.round(100 * r.correct / r.total)}%)</b></li>`).join('')}</ul>` : ''}
-    <h2 class="sec-title">Bez internetu</h2>
-    <div class="card offline-box">
-      ${have === n && n ? `<p><span class="ok">✓ Wszystkie utwory są zapisane na tym urządzeniu.</span></p><button class="btn" id="off-del">Usuń z urządzenia</button>`
-        : `<p>${have ? `Pobrano ${have} z ${n}. ` : ''}Zapisz utwory na tym urządzeniu, żeby słuchać i robić quizy bez internetu${size ? ` (ok. ${fmtMB(size)})` : ''}.</p>
-           <button class="btn primary" id="off-get">⇩ Pobierz na urządzenie</button> ${have ? '<button class="btn" id="off-del">Usuń pobrane</button>' : ''}`}
-      <div id="off-progress" hidden><div class="bar"><i></i></div><p class="muted" id="off-status"></p><button class="btn" id="off-cancel">Przerwij</button></div>
-    </div>
+    ${auto ? '' : `<h2 class="sec-title">Bez internetu</h2>${offBox}`}
     ${n ? `<details class="card tracks-box"><summary>Utwory w zbiorze (${n})</summary><ol class="track-list">${set.tracks.map((t) =>
       `<li>${esc(trackLabel(t))}${filesBadge(t)}${isDownloaded(t) ? ' <span class="dl" title="pobrany">⇩</span>' : ''}${noteHtml(t)}</li>`).join('')}</ol>
       ${locked ? '' : `<a class="btn wide" href="#/edytuj/${esc(id)}">✎ Edytuj utwory i kolejność</a>`}</details>` : ''}
@@ -301,7 +307,9 @@ async function setView(id) {
   $('#export').addEventListener('click', () => exportSet(set));
   $$('[data-copy]').forEach((b) => b.addEventListener('click', () => makeCopy(set)));
   $('#del-set').addEventListener('click', async () => {
-    if (!confirm(`Usunąć zbiór „${set.name}”? Pliki na Dysku Google zostaną nietknięte.`)) return;
+    const dlNote = have ? ' Pobrane nagrania tego zbioru zostaną usunięte z urządzenia.' : '';
+    if (!confirm(`Usunąć zbiór „${set.name}”?${dlNote} Pliki na Dysku Google zostaną nietknięte.`)) return;
+    if (dl && dl.setId === id) dlCancel = true;
     await db.deleteSet(id);
     await db.deleteResultsFor(id).catch(() => undefined);
     await cleanupAudio();
@@ -310,6 +318,9 @@ async function setView(id) {
   });
   const get = $('#off-get');
   if (get) get.addEventListener('click', () => downloadSet(set));
+  $('#off-cancel').addEventListener('click', () => { dlCancel = true; });
+  if (busy) showDownload();
+  else if (auto) downloadSet(set, { auto: true });
   const del = $('#off-del');
   if (del) del.addEventListener('click', async () => {
     if (!confirm('Usunąć pobrane nagrania tego zbioru z urządzenia?')) return;
@@ -360,39 +371,72 @@ async function cleanupAudio() {
   for (const k of await db.audioKeys()) if (!used.has(k)) await db.deleteAudio(k);
 }
 
+/** zbiór, który właśnie dodano (z biblioteki, z linku, z pliku) – jego ekran sam zaczyna pobieranie nagrań */
+let autoDownload = null;
+/** trwające pobieranie: { setId, auto, done, total, label } – przeżywa przejście na inny ekran */
+let dl = null;
 let dlCancel = false;
-async function downloadSet(set) {
-  if (!navigator.onLine) return toast('Do pobrania potrzebny jest internet.', 'error');
-  if (!drive.hasApiKey()) return toast('Brak klucza Google API – wpisz go w Ustawieniach.', 'error');
+
+/** pokazuje postęp pobierania na ekranie zbioru (jeśli jest otwarty) */
+function showDownload() {
+  const box = $('#off-progress');
+  if (!box || !dl) return;
+  box.hidden = false;
+  const get = $('#off-get');
+  if (get) get.disabled = true;
+  $('#off-progress .bar i').style.width = `${dl.total ? (dl.done / dl.total) * 100 : 0}%`;
+  $('#off-status').textContent = dl.total ? `Pobieranie ${Math.min(dl.done + 1, dl.total)} z ${dl.total}: ${dl.label}` : '';
+}
+
+async function downloadSet(set, { auto = false } = {}) {
+  if (dl) return;
+  const quiet = (msg) => {
+    if (auto) toast(`${msg} Nagrania możesz pobrać później w części „Bez internetu”.`, 'error'); else toast(msg, 'error');
+    if (location.hash === `#/zbior/${set.id}`) setView(set.id);
+  };
+  if (!navigator.onLine) return quiet('Do pobrania potrzebny jest internet.');
+  if (!drive.hasApiKey()) return quiet('Brak klucza Google API – wpisz go w Ustawieniach.');
   try { if (navigator.storage && navigator.storage.persist) await navigator.storage.persist(); } catch { /* trudno */ }
   await refreshDownloaded();
   const todo = set.tracks.flatMap((t) => trackFiles(t).map((f, k, all) => ({ ...f, label: trackLabel(t) + (all.length > 1 ? ` (fragment ${k + 1})` : '') })))
     .filter((f, i, a) => !downloaded.has(f.fileId) && a.findIndex((x) => x.fileId === f.fileId) === i);
-  const box = $('#off-progress');
-  const bar = $('#off-progress .bar i');
-  const st = $('#off-status');
-  box.hidden = false;
-  $('#off-get').disabled = true;
+  dl = { setId: set.id, auto, done: 0, total: todo.length, label: todo[0] ? todo[0].label : '' };
   dlCancel = false;
-  $('#off-cancel').onclick = () => { dlCancel = true; };
-  let done = 0;
+  showDownload();
   let failed = 0;
-  for (const t of todo) {
-    if (dlCancel) break;
-    st.textContent = `Pobieranie ${done + 1} z ${todo.length}: ${t.label}`;
-    try {
-      const blob = await drive.download(t, (f) => { bar.style.width = `${((done + f) / todo.length) * 100}%`; });
-      await db.putAudio(t.fileId, blob);
-    } catch (e) {
-      failed++;
-      toast(e.name === 'QuotaExceededError' ? 'Brak miejsca na urządzeniu.' : e.message, 'error');
-      if (e.name === 'QuotaExceededError' || e.code === 'offline') break;
+  try {
+    for (const t of todo) {
+      if (dlCancel) break;
+      dl.label = t.label;
+      showDownload();
+      try {
+        const blob = await drive.download(t, (f) => {
+          const bar = $('#off-progress .bar i');
+          if (bar && location.hash === `#/zbior/${set.id}`) bar.style.width = `${((dl.done + f) / todo.length) * 100}%`;
+        });
+        if (dlCancel && !(await db.getSet(set.id))) break; // zbiór usunięty w trakcie pobierania
+        await db.putAudio(t.fileId, blob);
+      } catch (e) {
+        failed++;
+        toast(e.name === 'QuotaExceededError' ? 'Brak miejsca na urządzeniu.' : e.message, 'error');
+        if (e.name === 'QuotaExceededError' || e.code === 'offline') break;
+      }
+      dl.done++;
     }
-    done++;
-    bar.style.width = `${(done / todo.length) * 100}%`;
+  } finally {
+    dl = null;
   }
-  if (!dlCancel && !failed) toast('Gotowe – zbiór działa bez internetu.', 'good');
+  if (!(await db.getSet(set.id))) { await cleanupAudio(); return; } // nie zostawiamy nagrań usuniętego zbioru
+  if (dlCancel) {
+    if (auto) { // „Nie pobieraj” – bez resztek: usuwamy to, co zdążyło się pobrać
+      const keep = await usedElsewhere(set.id);
+      for (const f of todo) if (!keep.has(f.fileId)) await db.deleteAudio(f.fileId).catch(() => undefined);
+      toast('Nie pobrano nagrań. Możesz to zrobić później w części „Bez internetu”.');
+    }
+  }
+  else if (!failed) toast(`Gotowe – „${set.name}” działa bez internetu.`, 'good');
   if (location.hash === `#/zbior/${set.id}`) setView(set.id);
+  else if (location.hash === '#/' || !location.hash) home();
 }
 
 // ---------- odtwarzacz ----------
@@ -1486,6 +1530,7 @@ async function importData(d) {
   for (const s of list) saved.push(await saveImported(s));
   if (saved.length === 1) {
     toast(`Zaimportowano „${saved[0].name}” (${utwory(saved[0].tracks.length)}).`, 'good');
+    autoDownload = saved[0].id;
     location.replace(`#/zbior/${saved[0].id}`);
   } else {
     toast(`Zaimportowano ${pl(saved.length, 'zbiór', 'zbiory', 'zbiorów')}.`, 'good');
@@ -1525,7 +1570,8 @@ async function importFromLibrary(entry) {
   if (mine && !confirm(`Zaktualizować „${mine.name}” do wersji z biblioteki? Twoje zmiany w tym zbiorze zostaną zastąpione (wyniki quizów zostają).`)) return home();
   const set = await saveImported(list[0], { lib: { file: entry.file, hash: entry.hash }, ask: !mine });
   toast(`${mine ? 'Zaktualizowano' : 'Dodano'} „${set.name}”.`, 'good');
-  home();
+  autoDownload = set.id;
+  location.hash = `#/zbior/${set.id}`;
 }
 
 async function importView(data) {

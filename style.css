@@ -353,3 +353,4 @@ body.has-mini .app-banner { bottom: calc(84px + env(safe-area-inset-bottom)); }
 .imp-panel .row-inline { margin: 4px 0; }
 .imp-or { text-align: center; color: var(--muted); font-size: .85rem; margin: 8px 0 0; }
 .imp-panel .small { font-size: .82rem; margin: 0; }
+.offline-box.auto-dl { border: 2px solid var(--accent); }
