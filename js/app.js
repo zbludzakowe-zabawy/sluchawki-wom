@@ -671,10 +671,12 @@ function answerChoice(id) {
 function whyHtml(notes, ok, inline) {
   if (!notes || !notes.length) return '';
   const q = (x) => `„${esc(x)}”`;
-  const items = notes.map((n) => {
+  // braki zbieramy w jedną listę: „brakuje: „g-moll”, „6”, „8””
+  const missing = notes.filter((n) => n.kind === 'missing').map((n) => q(n.fix));
+  const items = notes.map((n, i) => {
     if (n.kind === 'typo') return `<span class="typo">${q(n.given)} → ${q(n.fix)}</span>`;
     if (n.kind === 'wrong') return `<span class="err">„<s>${esc(n.given)}</s>”${n.fix ? ` → ${q(n.fix)}` : ' – nie pasuje'}${n.key ? ' (tonacja: wielka litera = dur, mała = moll)' : ''}</span>`;
-    if (n.kind === 'missing') return `<span class="err">brakuje ${q(n.fix)}</span>`;
+    if (n.kind === 'missing') return notes.findIndex((m) => m.kind === 'missing') === i ? `<span class="err">brakuje: ${missing.join(', ')}</span>` : '';
     if (n.kind === 'keymissing') return `<span class="typo">brakuje tonacji ${q(n.fix)}</span>`;
     if (n.kind === 'fulltitle') return `<span class="typo">pełny tytuł to ${q(n.fix)}</span>`;
     if (n.kind === 'empty') return '<span class="err">brak odpowiedzi</span>';
@@ -683,7 +685,7 @@ function whyHtml(notes, ok, inline) {
   });
   const typosOnly = notes.every((n) => n.kind === 'typo');
   const lead = ok ? (typosOnly ? 'Zaliczone mimo literówki: ' : 'Zaliczone, ale: ') : typosOnly ? 'Literówka: ' : 'Błąd: ';
-  return `<${inline ? 'span' : 'div'} class="why${ok ? ' ok-note' : ''}">${inline ? ' (' : ''}${lead}${items.join(', ')}${inline ? ')' : ''}</${inline ? 'span' : 'div'}>`;
+  return `<${inline ? 'span' : 'div'} class="why${ok ? ' ok-note' : ''}">${inline ? ' (' : ''}${lead}${items.filter(Boolean).join(', ')}${inline ? ')' : ''}</${inline ? 'span' : 'div'}>`;
 }
 
 function answerText(given, skipped) {

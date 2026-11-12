@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {
-  fold, tokens, parseLine, parseList, matchAll, matchScore, checkAnswer, checkAuthor, checkTitle, checkPart, explainField, answerSim,
+  fold, tokens, parseLine, parseList, matchAll, matchScore, checkAnswer, checkAuthor, checkTitle, checkPart, explainField, answerSim, canonName,
   cleanFileName, trackFromFileName, shuffle,
 } from '../js/textmatch.js';
 
@@ -143,6 +143,9 @@ test('quiz tekstowy – pokazanie pomyłek', () => {
   assert.deepEqual(explainField('title', 'Concerto grosso g-moll op. 6 nr 9', "Concerto Grosso g-moll ''Na Boże Narodzenie'', op. 6 nr 8"),
     [{ kind: 'wrong', given: '9', fix: '8' }]);
   assert.deepEqual(explainField('title', 'Halka', 'opera Halka'), []);
+  // część tytułu dobra – pokazujemy tylko braki, nie „Concerto – nie pasuje”
+  assert.deepEqual(explainField('title', 'Concerto grosso', "Concerto Grosso g-moll ''Na Boże Narodzenie'', op. 6 nr 8"),
+    ['g-moll', 'op', '6', '8'].map((fix) => ({ kind: 'missing', fix })));
   assert.deepEqual(explainField('part', 'II Alegro', 'cz. I Allegro'),
     [{ kind: 'wrong', given: 'II', fix: 'I' }, { kind: 'typo', given: 'Alegro', fix: 'Allegro' }]);
   assert.deepEqual(explainField('part', 'Pastorale', 'cz. 5. Pastorale'), []);
@@ -196,6 +199,25 @@ test('quiz tekstowy – tytuł po polsku i w oryginale', () => {
   assert.deepEqual(explainField('title', 'Na Boże Narodzenie', "Concerto Grosso g-moll ''Na Boże Narodzenie'', op. 6 nr 8").at(-1),
     { kind: 'fulltitle', fix: 'Concerto Grosso g-moll «Na Boże Narodzenie», op. 6 nr 8' });
   assert.deepEqual(explainField('title', 'Król Lear', 'Erlkönig (Król elfów)').some((n) => n.kind === 'fulltitle'), false); // błąd – bez tej uwagi
+});
+
+test('quiz tekstowy – imiona w różnych językach', () => {
+  assert.equal(checkAuthor('Johann Sebastian Bach', 'Jan Sebastian Bach'), true);
+  assert.equal(checkAuthor('Johan Sebastian Bach', 'Jan Sebastian Bach'), true);
+  assert.equal(checkAuthor('Jan Sebastian Bach', 'Johann Sebastian Bach'), true);
+  assert.equal(checkAuthor('Johhan Bach', 'Jan Sebastian Bach'), true); // literówka w imieniu
+  assert.equal(checkAuthor('J. S. Bach', 'Jan Sebastian Bach'), true);
+  assert.equal(checkAuthor('Wolfgang Amadeus Mozart', 'Wolfgang Amadeusz Mozart'), true);
+  assert.equal(checkAuthor('Sergei Prokofiew', 'Siergiej Prokofiew'), true);
+  assert.equal(checkAuthor('Frédéric Chopin', 'Fryderyk Chopin'), true);
+  assert.equal(checkAuthor('G. F. Händel', 'Jerzy Fryderyk Händel'), true); // inicjały oryginalnych imion
+  assert.equal(checkAuthor('Georg Friedrich Händel', 'Jerzy Fryderyk Händel'), true);
+  assert.equal(checkAuthor('Karl Bach', 'Jan Sebastian Bach'), false); // inne imię
+  assert.equal(checkAuthor('Piotr Bach', 'Jan Sebastian Bach'), false);
+  assert.equal(canonName('bach'), 'bach');
+  assert.deepEqual(explainField('author', 'Johan Sebastian Bach', 'Jan Sebastian Bach'), []);
+  assert.deepEqual(explainField('author', 'G. F. Händel', 'Jerzy Fryderyk Händel'), []);
+  assert.deepEqual(explainField('author', 'Karl Bach', 'Jan Sebastian Bach'), [{ kind: 'wrong', given: 'Karl' }]);
 });
 
 test('shuffle zachowuje elementy', () => {
