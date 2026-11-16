@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- ciemny motyw aplikacji = prefers-color-scheme: dark w stronie -->
+    <style name="AppTheme" parent="android:Theme.Material.NoActionBar">
+        <item name="android:statusBarColor">#2b2768</item>
+        <item name="android:navigationBarColor">#2b2768</item>
+        <item name="android:windowBackground">@color/bg</item>
+    </style>
+</resources>

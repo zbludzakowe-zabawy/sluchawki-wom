@@ -66,6 +66,19 @@ Strona jest publikowana na GitHub Pages (workflow `.github/workflows/pages.yml` 
 - **iPhone/iPad (Safari):** *Udostępnij* → *Do ekranu początkowego*.
 - **Komputer (Chrome/Edge):** ikona instalacji w pasku adresu.
 
+### Aplikacja na Androida (.apk) – np. przy kontroli rodzicielskiej
+
+Zainstalowana strona (PWA) bywa w kontroli rodzicielskiej liczona jako „przeglądarka internetowa”. Dlatego jest też zwykła aplikacja na Androida:
+**https://zbludzakowe-zabawy.github.io/sluchawki-wom/sluchawki.apk**
+
+1. Otwórz link na telefonie i pobierz plik.
+2. Otwórz pobrany plik. Android zapyta o instalację z nieznanego źródła – zezwól (dla przeglądarki albo aplikacji Pliki).
+3. Zainstaluj. Na ekranie pojawi się ikona „Słuchawki”. Kontrola rodzicielska widzi ją jako osobną aplikację.
+
+W środku jest ta sama strona, więc nowe wersje Słuchawek docierają same (baner „Dostępna nowa wersja”). Pliku .apk nie trzeba instalować ponownie.
+Dane (zbiory, pobrane nagrania, wyniki) aplikacja ma osobne od przeglądarki – zbiory można przenieść przez „Eksportuj” / „Importuj”.
+Kod: katalog `android/` (okno WebView, bez bibliotek), budowanie: `tools/build-apk.sh` (Android SDK, bez Gradle) – robi to sam workflow publikacji.
+
 Aplikacja uruchamia się bez internetu. Zbiory, wyniki, rozpoczęty quiz i szkic dodawania są zapamiętywane. Gdy pojawi się „Dostępna nowa wersja”, stuknij *Odśwież*. Nic nie zginie.
 
 ## Struktura
@@ -77,6 +90,7 @@ Aplikacja uruchamia się bez internetu. Zbiory, wyniki, rozpoczęty quiz i szkic
 | `js/textmatch.js` | odczyt listy z tekstu, dopasowanie do plików, sprawdzanie odpowiedzi |
 | `js/drive.js` | Dysk Google (lista plików, odtwarzanie, pobieranie) |
 | `js/ocr.js` | odczyt tekstu ze zdjęcia / PDF (usuwa ramki tabeli i kod QR) |
+| `android/` | aplikacja na Androida: okno ze stroną (`MainActivity.java`), ikona, klucz podpisu |
 | `js/layout.js` | składanie odczytanego tekstu w kolumny tabeli (Autor / Tytuł / Część), łączenie zawiniętych komórek |
 | `js/db.js` | pamięć urządzenia (IndexedDB) |
 | `js/confetti.js` | nagroda 🎉 |

@@ -1,0 +1,28 @@
+name: Aplikacja na Androida (próbna)
+
+# Buduje sluchawki.apk na gałęziach roboczych – do sprawdzenia przed scaleniem.
+# Na main plik .apk publikuje „Publikacja (GitHub Pages)”.
+on:
+  push:
+    branches-ignore: [main]
+    paths: ['android/**', 'tools/build-apk.sh', '.github/workflows/android.yml']
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  apk:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 17
+      - name: Budowanie
+        run: tools/build-apk.sh sluchawki.apk
+      - uses: actions/upload-artifact@v4
+        with:
+          name: sluchawki-apk
+          path: sluchawki.apk

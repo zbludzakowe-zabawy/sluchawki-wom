@@ -15,7 +15,8 @@
     try { localStorage.setItem(DISMISS_KEY, '1'); } catch (e) { /* trudno */ }
   };
 
-  const standalone = () =>
+  // aplikacja na Androida (android/) dopisuje „SluchawkiApp” do user agenta – nie proponuj instalacji
+  const standalone = () => /SluchawkiApp\//.test(navigator.userAgent) ||
     (window.matchMedia && window.matchMedia('(display-mode: standalone)').matches) || navigator.standalone === true;
 
   // iPhone/iPad: Safari nie pokazuje okna instalacji – trzeba „Udostępnij → Do ekranu początkowego”.

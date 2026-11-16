@@ -12,7 +12,7 @@ const list = (d) => readdirSync(d, { withFileTypes: true }).flatMap((e) =>
 
 const files = list(dir)
   .map((f) => relative(dir, f).split('\\').join('/'))
-  .filter((f) => f !== 'sw.js' && !f.startsWith('.'))
+  .filter((f) => f !== 'sw.js' && !f.startsWith('.') && !f.endsWith('.apk')) // .apk nie jest częścią strony
   .sort();
 const hash = createHash('sha256');
 for (const f of files) hash.update(f).update(readFileSync(join(dir, f)));
