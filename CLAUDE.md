@@ -9,6 +9,7 @@ Właścicielka pisze po polsku; cała aplikacja, komunikaty, commity i opisy PR 
   Jeśli poprzedni PR z tej gałęzi jest już scalony – zacznij gałąź od nowa od `origin/main`.
 - Przed PR: `npm test` + sprawdzenie w przeglądarce (Playwright, emulacja telefonu – patrz „Testowanie”).
 - Pytaj, zanim zmienisz zachowanie, które właścicielka wybrała świadomie (np. blokada edycji zbiorów z biblioteki).
+- Aplikacja na Androida (`android/`) ma działać tak samo jak strona – przy każdej zmianie sprawdź, czy dotyczy też jej (decyzja właścicielki): pobieranie/zapis plików, udostępnianie, wybór plików, nowe uprawnienia (kamera, mikrofon, powiadomienia), linki poza stronę, schowek. WebView nie obsługuje m.in. `<a download>` i `navigator.share` – idź przez `window.SluchawkiAndroid` (dopisz metodę w `MainActivity.java`). Zmiana w `android/` = nowy plik .apk do ponownej instalacji – napisz o tym właścicielce.
 - Bez frameworków i bez kroku budowania: czysty HTML/CSS/JS (moduły ES). Nie dodawaj zależności npm do aplikacji.
 
 ## Architektura
