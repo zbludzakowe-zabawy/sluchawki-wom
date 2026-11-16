@@ -32,6 +32,12 @@ jobs:
           if [ -d zbiory ]; then mkdir -p _site/zbiory && cp zbiory/*.json _site/zbiory/ 2>/dev/null || true; fi
           node tools/build-library.mjs _site
           node tools/build-sw.mjs _site
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 17
+      - name: Aplikacja na Androida (sluchawki.apk)
+        run: tools/build-apk.sh _site/sluchawki.apk
       - uses: actions/upload-pages-artifact@v3
         with:
           path: _site

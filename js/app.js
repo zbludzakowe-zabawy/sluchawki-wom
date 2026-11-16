@@ -1596,6 +1596,7 @@ async function decodeShare(s) {
 
 async function shareSet(set) {
   const url = `${location.origin}${location.pathname}#/import/${await encodeShare(packSet(set))}`;
+  if (window.SluchawkiAndroid) return window.SluchawkiAndroid.share(`Słuchawki – ${set.name}`, `Zbiór utworów „${set.name}” do nauki w aplikacji Słuchawki\n${url}`);
   if (navigator.share) {
     try { await navigator.share({ title: `Słuchawki – ${set.name}`, text: `Zbiór utworów „${set.name}” do nauki w aplikacji Słuchawki`, url }); return; } catch (e) { if (e.name === 'AbortError') return; }
   }
@@ -1603,22 +1604,26 @@ async function shareSet(set) {
 }
 
 function downloadJson(obj, name) {
-  const blob = new Blob([JSON.stringify(obj, null, 1)], { type: 'application/json' });
+  const text = JSON.stringify(obj, null, 1);
+  name = name.replace(/[\\/:*?"<>|]+/g, '_');
+  // aplikacja na Androida: WebView nie pobiera plików – Android pyta, gdzie zapisać
+  if (window.SluchawkiAndroid) { window.SluchawkiAndroid.saveFile(name, text); return false; }
+  const blob = new Blob([text], { type: 'application/json' });
   const a = document.createElement('a');
   a.href = URL.createObjectURL(blob);
-  a.download = name.replace(/[\\/:*?"<>|]+/g, '_');
+  a.download = name;
   document.body.appendChild(a);
   a.click();
   a.remove();
   setTimeout(() => URL.revokeObjectURL(a.href), 5000);
+  return true;
 }
-const exportSet = (set) => { downloadJson(packSet(set), `${set.name}.sluchawki.json`); toast('Zapisano plik zbioru.', 'good'); };
+const exportSet = (set) => { if (downloadJson(packSet(set), `${set.name}.sluchawki.json`)) toast('Zapisano plik zbioru.', 'good'); };
 async function exportAll() {
   const sets = (await db.listSets()).sort((a, b) => a.name.localeCompare(b.name, 'pl'));
   if (!sets.length) return toast('Nie ma zbiorów do eksportu.');
   const day = new Date().toISOString().slice(0, 10);
-  downloadJson({ app: 'sluchawki', v: 1, exportedAt: Date.now(), sets: sets.map(packSet) }, `Sluchawki-wszystkie-zbiory-${day}.sluchawki.json`);
-  toast(`Zapisano plik z ${pl(sets.length, 'zbiorem', 'zbiorami', 'zbiorami')}.`, 'good');
+  if (downloadJson({ app: 'sluchawki', v: 1, exportedAt: Date.now(), sets: sets.map(packSet) }, `Sluchawki-wszystkie-zbiory-${day}.sluchawki.json`)) toast(`Zapisano plik z ${pl(sets.length, 'zbiorem', 'zbiorami', 'zbiorami')}.`, 'good');
 }
 
 /** zapisuje zbiór z importu (zastępuje albo dodaje jako nowy) */

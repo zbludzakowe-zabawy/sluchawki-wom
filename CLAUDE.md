@@ -25,13 +25,14 @@ Właścicielka pisze po polsku; cała aplikacja, komunikaty, commity i opisy PR 
 | `js/pwa.js`, `sw.js`, `manifest.webmanifest`, `icons/` | PWA wg przepisu właścicielki (skill „pwa-na-telefon”): baner instalacji, baner „Dostępna nowa wersja”, offline |
 | `tools/build-sw.mjs` | przy publikacji wpisuje do `sw.js` wersję (hash plików) i listę plików |
 | `tools/build-library.mjs` | przy publikacji tworzy `zbiory/index.json` (spis biblioteki: file, name, count, hash) |
+| `android/`, `tools/build-apk.sh` | aplikacja na Androida (WebView ze stroną z Pages – kontrola rodzicielska liczy PWA jako przeglądarkę). Bez Gradle: aapt2/javac/d8/apksigner z SDK na GitHub Actions; `_site/sluchawki.apk`. Klucz `android/sluchawki.keystore` celowo w repo (ten sam podpis → aktualizacja na starą wersję). Strona rozpoznaje aplikację po `SluchawkiApp/` w user agencie; `window.SluchawkiAndroid.saveFile/share` zamiast pobierania pliku i `navigator.share`. Workflow `android.yml` buduje próbny APK na gałęziach |
 | `tools/make-icons.cjs` | ikony PNG z `icons/icon.svg` (Playwright) |
 | `zbiory/*.json` | biblioteka zbiorów wbudowanych – widoczna dla wszystkich |
 | `przyklady/kanon-2.1.png` | wzorcowa lista utworów (zrzut tabeli z Worda) – tak wyglądają listy do odczytu |
 | `przyklady/kanon-3.1.jpg` | lista z czerwonymi uwagami w kolumnie „Część/fragment” (fixture `kanon-3.1-ocr.json`) |
 | `tests/` | `node --test`; `fixtures/kanon-2.1-ocr.json` = słowa z OCR wzorcowej listy |
 
-Publikacja: `.github/workflows/pages.yml` (push do `main`) → testy → kopiuje pliki do `_site` (+ `zbiory/*.json`) → `build-library` → `build-sw` → Pages.
+Publikacja: `.github/workflows/pages.yml` (push do `main`) → testy → kopiuje pliki do `_site` (+ `zbiory/*.json`) → `build-library` → `build-sw` (pomija `*.apk`) → `build-apk` → Pages.
 
 ## Model danych
 Zbiór (`sets`): `{ id, name, createdAt, updatedAt, folders:[{id,resourceKey,name}], files:[{id,name,size,mimeType,resourceKey}], tracks:[{id, author, title, part, note?, fileId, fileName, size, mimeType, resourceKey, extra?:[{fileId, fileName, size, mimeType, resourceKey}]}], lib? }`
